@@ -259,12 +259,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).primaryColor.withOpacity(0.12),
+                    color: isDark
+                        ? Colors.white.withOpacity(0.08)
+                        : Theme.of(context).primaryColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     icon,
-                    color: Theme.of(context).primaryColor,
+                    color: isDark ? Colors.white : Theme.of(context).primaryColor,
                     size: 20,
                   ),
                 ),
@@ -287,7 +289,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark
-                                ? const Color(0xFF94A3B8)
+                                ? const Color(0xFF8E8E93)
                                 : const Color(0xFF475569),
                           ),
                         ),
@@ -318,35 +320,35 @@ class _SettingsScreenState extends State<SettingsScreen>
       prefixIcon: prefixIcon,
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      fillColor: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF8FAFC),
       labelStyle: TextStyle(
-        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+        color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF64748B),
         fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
       hintStyle: TextStyle(
-        color: isDark ? const Color(0xFF475569) : const Color(0xFF94A3B8),
+        color: isDark ? const Color(0xFF636366) : const Color(0xFF94A3B8),
         fontSize: 13,
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE2E8F0),
           width: 1.2,
         ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE2E8F0),
           width: 1.2,
         ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: Theme.of(context).colorScheme.primary,
+          color: isDark ? Colors.white : Theme.of(context).colorScheme.primary,
           width: 1.8,
         ),
       ),
@@ -381,17 +383,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                     width: double.infinity,
                     child: SegmentedButton<ThemeMode>(
                       style: SegmentedButton.styleFrom(
-                        selectedBackgroundColor: Theme.of(
-                          context,
-                        ).colorScheme.primary,
-                        selectedForegroundColor: Colors.white,
-                        backgroundColor: isDark
-                            ? const Color(0xFF1E293B)
+                        selectedBackgroundColor: isDark
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.primary,
+                        selectedForegroundColor: isDark
+                            ? Colors.black
                             : Colors.white,
-                        foregroundColor: isDark ? Colors.white : Colors.black87,
+                        backgroundColor: isDark
+                            ? const Color(0xFF1C1C1E)
+                            : Colors.white,
+                        foregroundColor: isDark ? const Color(0xFF8E8E93) : Colors.black87,
                         side: BorderSide(
                           color: isDark
-                              ? const Color(0xFF334155)
+                              ? const Color(0xFF2C2C2E)
                               : const Color(0xFFE2E8F0),
                         ),
                       ),
@@ -552,21 +556,23 @@ class _SettingsScreenState extends State<SettingsScreen>
                   const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: _fetchModels,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.cloud_download,
                       size: 18,
-                      color: Colors.white,
+                      color: isDark ? Colors.black : Colors.white,
                     ),
-                    label: const Text(
+                    label: Text(
                       'Fetch',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: isDark ? Colors.black : Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      backgroundColor: isDark
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.primary,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,

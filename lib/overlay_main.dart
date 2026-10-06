@@ -576,7 +576,7 @@ class _OverlayAppState extends State<OverlayApp> {
                             width: 28,
                             height: 28,
                             decoration: const BoxDecoration(
-                              color: Color(0xFF4F46E5),
+                              color: Color(0xFF111111),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(

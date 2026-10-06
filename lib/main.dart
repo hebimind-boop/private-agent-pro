@@ -19,13 +19,13 @@ void overlayMain() {
         scaffoldBackgroundColor: Colors.transparent,
         cardColor: Colors.white,
         dialogBackgroundColor: Colors.transparent,
-        primaryColor: const Color(0xFF4F46E5),
+        primaryColor: const Color(0xFF000000),
         useMaterial3: true,
         colorScheme: const ColorScheme.light(
           background: Colors.transparent,
-          primary: Color(0xFF4F46E5),
+          primary: Color(0xFF000000),
           surface: Colors.white,
-          onSurface: Color(0xFF1E293B),
+          onSurface: Color(0xFF111111),
           onPrimary: Colors.white,
         ),
       ),
@@ -125,16 +125,19 @@ class PrivateAgentApp extends StatelessWidget {
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
-            primaryColor: const Color(0xFF6366F1), // Indigo-500
+            primaryColor: const Color(0xFFFFFFFF),
             scaffoldBackgroundColor: const Color(
-              0xFF0B0F19,
-            ), // Midnight deep slate
+              0xFF000000,
+            ), // True pitch-black OLED
             colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF6366F1), // Indigo-500
-              secondary: Color(0xFF38BDF8), // Sky-400
-              surface: Color(0xFF151D30), // Midnight gray-blue card background
-              onSurface: Color(0xFFF8FAFC), // Slate-50 text
-              surfaceContainerHighest: Color(0xFF1E293B), // Slate-800
+              primary: Color(0xFFFFFFFF), // Crisp pure white
+              onPrimary: Color(0xFF000000), // Pure black text on primary buttons
+              secondary: Color(0xFFE5E5EA),
+              onSecondary: Color(0xFF000000),
+              surface: Color(0xFF111111), // Dark elevated card surface
+              onSurface: Color(0xFFF8FAFC),
+              surfaceContainerHighest: Color(0xFF1C1C1E),
+              outline: Color(0xFF2C2C2E),
               error: Colors.redAccent,
             ),
             useMaterial3: true,
@@ -143,8 +146,8 @@ class PrivateAgentApp extends StatelessWidget {
               elevation: 0,
               scrolledUnderElevation: 0,
               backgroundColor: Colors.transparent,
-              foregroundColor: Color(0xFFF8FAFC),
-              iconTheme: IconThemeData(color: Color(0xFFF8FAFC)),
+              foregroundColor: Color(0xFFFFFFFF),
+              iconTheme: IconThemeData(color: Color(0xFFFFFFFF)),
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.light,
@@ -153,11 +156,11 @@ class PrivateAgentApp extends StatelessWidget {
             ),
             cardTheme: CardThemeData(
               elevation: 0,
-              color: const Color(0xFF151D30),
+              color: const Color(0xFF111111),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: const Color(0xFF243049).withOpacity(0.4),
+                side: const BorderSide(
+                  color: Color(0xFF2C2C2E),
                   width: 1.2,
                 ),
               ),

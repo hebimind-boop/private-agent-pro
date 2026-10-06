@@ -225,12 +225,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             _isValidating = false;
           });
 
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text(
+              content: Text(
                 'Configuration validated! Launching PrivateAgent...',
+                style: TextStyle(
+                  color: isDark ? Colors.black : Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              backgroundColor: Colors.indigoAccent,
+              backgroundColor: isDark ? Colors.white : Theme.of(context).colorScheme.primary,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -405,7 +410,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     return Scaffold(
       backgroundColor: isDark
-          ? const Color(0xFF0B0F19)
+          ? const Color(0xFF000000)
           : const Color(0xFFF8FAFC),
       body: Stack(
         children: [
@@ -473,11 +478,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? const Color(0xFF6366F1).withOpacity(0.18)
-                        : const Color(0xFF4F46E5).withOpacity(0.08),
+                        ? Colors.white.withOpacity(0.04)
+                        : Colors.black.withOpacity(0.03),
                     isDark
-                        ? const Color(0xFF6366F1).withOpacity(0)
-                        : const Color(0xFF4F46E5).withOpacity(0),
+                        ? Colors.white.withOpacity(0)
+                        : Colors.black.withOpacity(0),
                   ],
                 ),
               ),
@@ -494,11 +499,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? const Color(0xFF38BDF8).withOpacity(0.15)
-                        : const Color(0xFF0EA5E9).withOpacity(0.06),
+                        ? Colors.white.withOpacity(0.03)
+                        : Colors.black.withOpacity(0.02),
                     isDark
-                        ? const Color(0xFF38BDF8).withOpacity(0)
-                        : const Color(0xFF0EA5E9).withOpacity(0),
+                        ? Colors.white.withOpacity(0)
+                        : Colors.black.withOpacity(0),
                   ],
                 ),
               ),
@@ -607,7 +612,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 height: 140,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isDark ? const Color(0xFF151D30) : Colors.white,
+                  color: isDark ? const Color(0xFF111111) : Colors.white,
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
