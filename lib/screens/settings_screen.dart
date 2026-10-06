@@ -82,11 +82,13 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _checkOverlayStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bubblePref = prefs.getBool('floating_bubble_enabled') ?? true;
     bool isActive = await FlutterOverlayWindow.isActive();
     bool isGranted = await FlutterOverlayWindow.isPermissionGranted();
     if (mounted) {
       setState(() {
-        _floatingIconEnabled = isActive;
+        _floatingIconEnabled = isActive || bubblePref;
         _isOverlayPermissionGranted = isGranted;
       });
     }
@@ -711,12 +713,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                   value: _floatingIconEnabled,
                   onChanged: (val) async {
                     if (val) {
-                      bool? isGranted =
+                      bool isGranted =
                           await FlutterOverlayWindow.isPermissionGranted();
-                      if (isGranted != true) {
-                        bool? result =
-                            await FlutterOverlayWindow.requestPermission();
-                        if (result != true) {
+                      if (!isGranted) {
+                        await FlutterOverlayWindow.requestPermission();
+                        isGranted =
+                            await FlutterOverlayWindow.isPermissionGranted();
+                        if (!isGranted) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -729,7 +732,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           return;
                         }
                       }
-                      if (await FlutterOverlayWindow.isActive() == false) {
+                      if (!await FlutterOverlayWindow.isActive()) {
                         await FlutterOverlayWindow.showOverlay(
                           enableDrag: true,
                           overlayTitle: "PrivateAgent",
@@ -744,10 +747,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                         );
                       }
                     } else {
-                      if (await FlutterOverlayWindow.isActive() == true) {
+                      if (await FlutterOverlayWindow.isActive()) {
                         await FlutterOverlayWindow.closeOverlay();
                       }
                     }
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('floating_bubble_enabled', val);
                     setState(() => _floatingIconEnabled = val);
                     _autoSave();
                   },

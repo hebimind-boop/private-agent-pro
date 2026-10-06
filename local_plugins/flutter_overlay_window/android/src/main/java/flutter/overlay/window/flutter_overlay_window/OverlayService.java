@@ -131,7 +131,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
         isRunning = true;
         Log.d("onStartCommand", "Service started");
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-        engine.getLifecycleChannel().appIsResumed();
+        if (engine != null) {
+            engine.getLifecycleChannel().appIsResumed();
+            try {
+                Intent regIntent = new Intent("com.orailnoor.privateagent.REGISTER_BACKGROUND_CHANNELS");
+                regIntent.setPackage(getPackageName());
+                sendBroadcast(regIntent);
+            } catch (Exception e) {
+                Log.e("OverlayService", "Broadcast error: " + e.getMessage());
+            }
+        }
         flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
         flutterView.attachToFlutterEngine(FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG));
         flutterView.setFitsSystemWindows(true);
@@ -335,6 +344,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (flutterEngine != null) {
             flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
             overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+            try {
+                Intent regIntent = new Intent("com.orailnoor.privateagent.REGISTER_BACKGROUND_CHANNELS");
+                regIntent.setPackage(getPackageName());
+                sendBroadcast(regIntent);
+            } catch (Exception e) {
+                Log.e("OverlayService", "Broadcast error: " + e.getMessage());
+            }
         }
 
         createNotificationChannel();

@@ -17,16 +17,17 @@ void overlayMain() {
       theme: ThemeData(
         canvasColor: Colors.transparent,
         scaffoldBackgroundColor: Colors.transparent,
-        cardColor: Colors.white,
+        cardColor: const Color(0xFF111111),
         dialogBackgroundColor: Colors.transparent,
-        primaryColor: const Color(0xFF000000),
+        primaryColor: const Color(0xFFFFFFFF),
         useMaterial3: true,
-        colorScheme: const ColorScheme.light(
-          background: Colors.transparent,
-          primary: Color(0xFF000000),
-          surface: Colors.white,
-          onSurface: Color(0xFF111111),
-          onPrimary: Colors.white,
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFFFFFFF),
+          onPrimary: Color(0xFF000000),
+          surface: Color(0xFF111111),
+          surfaceContainerHighest: Color(0xFF1C1C1E),
+          outline: Color(0xFF2C2C2E),
+          onSurface: Color(0xFFFFFFFF),
         ),
       ),
       builder: (context, child) {

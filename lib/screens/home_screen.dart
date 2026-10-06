@@ -46,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   Timer? _overlayHistoryTimer;
+  bool _isOverlayActive = false;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _telegramService = TelegramService(_actionHandler, _aiService);
     _initServices();
+    _checkOverlayActiveStatus();
     _startOverlayHistorySync();
     // Register as the handler for overlay bubble tasks
     onOverlayTask = (task) => _sendMessage(task);
@@ -364,11 +366,89 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _appLifecycleState = state;
     });
     if (state == AppLifecycleState.resumed) {
+      _checkOverlayActiveStatus();
       _startOverlayHistorySync();
       unawaited(_handleAppForegrounded());
     } else {
       _overlayHistoryTimer?.cancel();
       _updateOverlayState();
+    }
+  }
+
+  Future<void> _checkOverlayActiveStatus() async {
+    if (!FeatureFlags.floatingOverlayEnabled) return;
+    try {
+      final active = await FlutterOverlayWindow.isActive();
+      if (mounted) setState(() => _isOverlayActive = active);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFloatingOverlay() async {
+    if (!FeatureFlags.floatingOverlayEnabled) return;
+
+    final active = await FlutterOverlayWindow.isActive();
+    if (active) {
+      await FlutterOverlayWindow.closeOverlay();
+      if (mounted) {
+        setState(() => _isOverlayActive = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Floating bubble dismissed'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('floating_bubble_enabled', false);
+      return;
+    }
+
+    bool isGranted = await FlutterOverlayWindow.isPermissionGranted();
+    if (!isGranted) {
+      await FlutterOverlayWindow.requestPermission();
+      isGranted = await FlutterOverlayWindow.isPermissionGranted();
+      if (!isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Overlay permission is required to display the floating bubble.',
+              ),
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    await FlutterOverlayWindow.showOverlay(
+      enableDrag: true,
+      overlayTitle: 'PrivateAgent',
+      overlayContent: _isLoading ? 'Performing task...' : 'Floating Assistant',
+      flag: OverlayFlag.focusPointer,
+      alignment: OverlayAlignment.centerRight,
+      visibility: NotificationVisibility.visibilitySecret,
+      positionGravity: PositionGravity.auto,
+      startPosition: const OverlayPosition(0, 200),
+      width: 56,
+      height: 56,
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('floating_bubble_enabled', true);
+
+    if (mounted) {
+      setState(() => _isOverlayActive = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Floating bubble activated'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -421,14 +501,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!FeatureFlags.floatingOverlayEnabled) return;
     final generation = ++_overlayUpdateGeneration;
     final isBackground = _appLifecycleState == AppLifecycleState.paused;
-    final shouldBeActive = isBackground;
+    final prefs = await SharedPreferences.getInstance();
+    final bubbleEnabled = prefs.getBool('floating_bubble_enabled') ?? true;
 
     bool granted = await FlutterOverlayWindow.isPermissionGranted();
     if (!granted || generation != _overlayUpdateGeneration) return;
 
     bool active = await FlutterOverlayWindow.isActive();
     if (generation != _overlayUpdateGeneration) return;
-    if (shouldBeActive && !active) {
+
+    if (mounted && _isOverlayActive != active) {
+      setState(() => _isOverlayActive = active);
+    }
+
+    if (bubbleEnabled) {
+      if (isBackground && !active) {
       await Future.delayed(const Duration(milliseconds: 200));
       if (generation != _overlayUpdateGeneration) return;
       if (_appLifecycleState != AppLifecycleState.paused) return;
@@ -459,18 +546,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           await _sendOverlayHistorySnapshot();
         }
       }
-    } else if (shouldBeActive && active && _isLoading) {
-      await _sendOverlayHistorySnapshot();
-    } else if (!shouldBeActive && active) {
-      try {
-        await FlutterOverlayWindow.shareData(
-          'OVERLAY_RESET|',
-        ).timeout(const Duration(milliseconds: 150));
-      } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      if (generation != _overlayUpdateGeneration) return;
-      if (_appLifecycleState == AppLifecycleState.paused) return;
-      await FlutterOverlayWindow.closeOverlay();
+      } else if (isBackground && active && _isLoading) {
+        await _sendOverlayHistorySnapshot();
+      }
+    } else {
+      if (active) {
+        try {
+          await FlutterOverlayWindow.shareData(
+            'OVERLAY_RESET|',
+          ).timeout(const Duration(milliseconds: 150));
+        } catch (_) {}
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (generation != _overlayUpdateGeneration) return;
+        await FlutterOverlayWindow.closeOverlay();
+        if (mounted) setState(() => _isOverlayActive = false);
+      }
     }
   }
 
@@ -518,6 +608,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
         actions: [
+          if (FeatureFlags.floatingOverlayEnabled)
+            IconButton(
+              icon: Icon(
+                _isOverlayActive
+                    ? Icons.bubble_chart_rounded
+                    : Icons.bubble_chart_outlined,
+                color: _isOverlayActive
+                    ? (isDark ? Colors.white : Colors.black)
+                    : (isDark ? Colors.white70 : Colors.black54),
+              ),
+              tooltip: _isOverlayActive
+                  ? 'Dismiss Floating Bubble'
+                  : 'Launch Floating Bubble',
+              onPressed: _toggleFloatingOverlay,
+            ),
           IconButton(
             icon: const Icon(Icons.add_comment_outlined),
             tooltip: 'New chat',
