@@ -17,6 +17,7 @@ import '../services/telegram_service.dart';
 import '../services/chat_history_service.dart';
 import '../services/notification_service.dart';
 import '../services/artifact_service.dart';
+import '../services/update_service.dart';
 import 'settings_screen.dart';
 import 'task_history_screen.dart';
 import 'artifacts_screen.dart';
@@ -83,6 +84,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (mounted) {
       setState(() {});
+      // Silently check for app updates in background
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        UpdateService.checkSilently(context);
+      });
     }
   }
 

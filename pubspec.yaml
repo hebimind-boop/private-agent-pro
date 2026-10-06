@@ -21,6 +21,7 @@ dependencies:
   installed_apps: ^1.5.0
   url_launcher: ^6.3.0
   android_intent_plus: ^5.1.0
+  open_filex: ^4.7.0
 
   # Contacts
   flutter_contacts: ^1.1.9+2

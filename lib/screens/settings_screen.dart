@@ -7,6 +7,7 @@ import '../services/shizuku_service.dart';
 import '../services/screen_automation_service.dart';
 import '../services/telegram_service.dart';
 import 'task_history_screen.dart';
+import '../services/update_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../config/feature_flags.dart';
@@ -833,7 +834,71 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
 
-          // 9. About / Links Card
+          // 9. Software Updates Card
+          _buildSettingsCard(
+            icon: Icons.system_update_rounded,
+            title: 'Software Updates',
+            subtitle: 'Current Version: v${UpdateService.currentVersion}',
+            isDark: isDark,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'In-App Auto-Updater',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Check GitHub releases for the latest APK',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () => UpdateService.checkManually(context),
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      size: 16,
+                      color: isDark ? Colors.black : Colors.white,
+                    ),
+                    label: Text(
+                      'Check Now',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.black : Colors.white,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDark ? Colors.white : Colors.black87,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // 10. About / Links Card
           _buildSettingsCard(
             icon: Icons.info_outline_rounded,
             title: 'About PrivateAgent',
