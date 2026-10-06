@@ -208,7 +208,11 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
   }
 
   /// Send a message to the AI and get a response.
-  Future<String> sendMessage(String message, {bool isAgentMode = true}) async {
+  Future<String> sendMessage(
+    String message, {
+    bool isAgentMode = true,
+    String? imageBase64,
+  }) async {
     if (_apiKey == null || _apiKey!.isEmpty) {
       throw Exception('API Key is not configured. Please go to Settings.');
     }
@@ -224,9 +228,33 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
     try {
       // Build the prompt including system instructions
       final systemPrompt = isAgentMode ? _systemPrompt : _chatSystemPrompt;
+      final historyWithoutLatest =
+          _conversationHistory.length > 1
+              ? _conversationHistory.sublist(0, _conversationHistory.length - 1)
+              : <Map<String, String>>[];
+      final userMessagePayload =
+          imageBase64 != null && imageBase64.isNotEmpty
+              ? {
+                'role': 'user',
+                'content': [
+                  {'type': 'text', 'text': message},
+                  {
+                    'type': 'image_url',
+                    'image_url': {
+                      'url':
+                          imageBase64.startsWith('data:')
+                              ? imageBase64
+                              : 'data:image/jpeg;base64,$imageBase64',
+                    },
+                  },
+                ],
+              }
+              : {'role': 'user', 'content': message};
+
       final messages = [
         if (_useSystemPrompt) {'role': 'system', 'content': systemPrompt},
-        ..._conversationHistory,
+        ...historyWithoutLatest,
+        userMessagePayload,
       ];
 
       String requestUrl = _baseUrl;
@@ -323,6 +351,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
   Stream<String> sendMessageStream(
     String message, {
     bool isAgentMode = true,
+    String? imageBase64,
   }) async* {
     if (_apiKey == null || _apiKey!.isEmpty) {
       throw Exception('API Key is not configured. Please go to Settings.');
@@ -336,9 +365,33 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
 
     try {
       final systemPrompt = isAgentMode ? _systemPrompt : _chatSystemPrompt;
+      final historyWithoutLatest =
+          _conversationHistory.length > 1
+              ? _conversationHistory.sublist(0, _conversationHistory.length - 1)
+              : <Map<String, String>>[];
+      final userMessagePayload =
+          imageBase64 != null && imageBase64.isNotEmpty
+              ? {
+                'role': 'user',
+                'content': [
+                  {'type': 'text', 'text': message},
+                  {
+                    'type': 'image_url',
+                    'image_url': {
+                      'url':
+                          imageBase64.startsWith('data:')
+                              ? imageBase64
+                              : 'data:image/jpeg;base64,$imageBase64',
+                    },
+                  },
+                ],
+              }
+              : {'role': 'user', 'content': message};
+
       final messages = [
         if (_useSystemPrompt) {'role': 'system', 'content': systemPrompt},
-        ..._conversationHistory,
+        ...historyWithoutLatest,
+        userMessagePayload,
       ];
 
       String requestUrl = _baseUrl;
