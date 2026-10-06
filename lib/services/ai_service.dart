@@ -173,6 +173,47 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
     await prefs.setBool('api_use_system_prompt', useSystemPrompt);
   }
 
+  Future<void> setModel(String newModel) async {
+    _model = newModel;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('api_model', newModel);
+  }
+
+  List<String> getCuratedModelsForCurrentProvider() {
+    final lowerUrl = _baseUrl.toLowerCase();
+    if (isNvidiaBaseUrl(_baseUrl)) {
+      return nvidiaFreeChatModels;
+    } else if (lowerUrl.contains('deepseek')) {
+      return const ['deepseek-chat', 'deepseek-reasoner'];
+    } else if (lowerUrl.contains('groq')) {
+      return const [
+        'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'mixtral-8x7b-32768',
+        'gemma2-9b-it',
+      ];
+    } else if (lowerUrl.contains('ollama')) {
+      return const [
+        'llama3.2',
+        'deepseek-r1',
+        'qwen2.5-coder',
+        'gemma3:4b',
+        'mistral',
+      ];
+    } else if (lowerUrl.contains('openrouter')) {
+      return const [
+        'meta-llama/llama-3.3-70b-instruct',
+        'deepseek/deepseek-chat',
+        'deepseek/deepseek-r1',
+        'google/gemini-2.0-flash-exp:free',
+      ];
+    } else if (lowerUrl.contains('openai.com')) {
+      return const ['gpt-4o', 'gpt-4o-mini', 'o1-mini', 'o3-mini'];
+    }
+    final defaults = <String>{_model, 'deepseek-chat', 'gpt-4o', 'llama-3.3-70b-instruct'};
+    return defaults.toList();
+  }
+
   bool get isConfigured => _apiKey != null && _apiKey!.isNotEmpty;
   String get baseUrl => _baseUrl;
   String get model => _model;

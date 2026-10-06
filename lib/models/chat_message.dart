@@ -3,12 +3,16 @@ class ChatMessage {
   final String content;
   final DateTime timestamp;
   final AgentActionResult? actionResult;
+  final String? imageBase64;
+  final String? imagePath;
 
   ChatMessage({
     required this.role,
     required this.content,
     DateTime? timestamp,
     this.actionResult,
+    this.imageBase64,
+    this.imagePath,
   }) : timestamp = timestamp ?? DateTime.now();
 
   bool get isUser => role == 'user';
@@ -18,6 +22,8 @@ class ChatMessage {
         'content': content,
         'timestamp': timestamp.toIso8601String(),
         'actionResult': actionResult?.toJson(),
+        'imageBase64': imageBase64,
+        'imagePath': imagePath,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -27,6 +33,8 @@ class ChatMessage {
         actionResult: json['actionResult'] != null
             ? AgentActionResult.fromJson(json['actionResult'] as Map<String, dynamic>)
             : null,
+        imageBase64: json['imageBase64'] as String?,
+        imagePath: json['imagePath'] as String?,
       );
 }
 

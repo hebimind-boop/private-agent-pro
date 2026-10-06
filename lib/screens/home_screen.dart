@@ -62,11 +62,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _attachedFileType;
   Uint8List? _attachedBytes;
   final ImagePicker _imagePicker = ImagePicker();
+  bool _hasInputText = false;
+
+  bool get _hasInput => _hasInputText || _attachedBytes != null;
+
+  void _handleTextChange() {
+    final hasText = _textController.text.trim().isNotEmpty;
+    if (hasText != _hasInputText) {
+      setState(() {
+        _hasInputText = hasText;
+      });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _textController.addListener(_handleTextChange);
     _telegramService = TelegramService(_actionHandler, _aiService);
     _initServices();
     _checkOverlayActiveStatus();
@@ -123,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final currentAttachmentName = _attachedFileName;
     final currentAttachmentType = _attachedFileType;
     final currentAttachmentBytes = _attachedBytes;
+    final currentAttachmentFile = _attachedFile;
 
     // Clear local attachment state immediately for responsive UI
     setState(() {
@@ -130,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _attachedFileName = null;
       _attachedFileType = null;
       _attachedBytes = null;
+      _hasInputText = false;
     });
 
     String? imageBase64;
@@ -171,7 +186,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
 
-    final userMessage = ChatMessage(role: 'user', content: outgoingPrompt);
+    final userMessage = ChatMessage(
+      role: 'user',
+      content: outgoingPrompt,
+      imageBase64: currentAttachmentType == 'image' ? imageBase64 : null,
+      imagePath: currentAttachmentType == 'image' ? currentAttachmentFile?.path : null,
+    );
     setState(() {
       _messages.add(userMessage);
       _isLoading = true;
@@ -429,6 +449,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _overlayHistoryTimer?.cancel();
+    _textController.removeListener(_handleTextChange);
     _textController.dispose();
     _scrollController.dispose();
     _voiceService.dispose();
@@ -812,72 +833,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
-                          return MessageBubble(message: _messages[index]);
+                          final isLast = index == _messages.length - 1;
+                          final isGenerating =
+                              _isLoading && isLast && !_messages[index].isUser;
+                          return MessageBubble(
+                            message: _messages[index],
+                            isGenerating: isGenerating,
+                            onStop: isGenerating
+                                ? () {
+                                    _actionHandler.cancelTask();
+                                    setState(() {
+                                      _isLoading = false;
+                                    });
+                                  }
+                                : null,
+                          );
                         },
                       ),
               ),
-
-              // Think loading indicator
-              if (_isLoading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            isDark ? Colors.white : Colors.black,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Thinking...',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? const Color(0xFF9E9BAC)
-                              : const Color(0xFF6C6A7C),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: () {
-                          _actionHandler.cancelTask();
-                          setState(() {
-                            _isLoading = false;
-                          });
-                        },
-                        icon: const Icon(
-                          Icons.stop_circle_rounded,
-                          size: 16,
-                          color: Colors.redAccent,
-                        ),
-                        label: const Text(
-                          'Stop',
-                          style: TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
 
               // Custom Input bar
               _buildInputBar(isDark),
@@ -1460,258 +1433,452 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildInputBar(bool isDark) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       decoration: const BoxDecoration(color: Colors.transparent),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Attachment Preview Chip if active
-          if (_attachedBytes != null) _buildAttachmentPreviewChip(isDark),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF141414) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isDark ? const Color(0xFF262626) : Colors.grey[300]!,
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.35 : 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Top Section: Claude-Style Rounded Square Thumbnail with Close Badge
+            if (_attachedBytes != null) _buildClaudeAttachmentThumbnail(isDark),
 
-          Row(
-            children: [
-              // Multimodal Attachment (+) button
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDark ? const Color(0xFF1C1C1E) : Colors.grey[200],
-                  border: Border.all(
-                    color: isDark
-                        ? const Color(0xFF2C2C2E)
-                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+            // 2. Middle Section: Multi-line TextField
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: TextField(
+                controller: _textController,
+                minLines: 1,
+                maxLines: 6,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.white : Colors.black87,
+                  height: 1.35,
                 ),
-                child: IconButton(
-                  icon: Icon(
-                    Icons.add_rounded,
-                    color: isDark ? Colors.white : Colors.black87,
-                    size: 22,
+                cursorColor: isDark ? Colors.white : Colors.black,
+                decoration: InputDecoration(
+                  hintText: _isListening
+                      ? 'Listening...'
+                      : 'Type a prompt or task...',
+                  hintStyle: TextStyle(
+                    fontSize: 15,
+                    color: isDark ? const Color(0xFF666668) : Colors.grey[400],
                   ),
-                  tooltip: 'Attach Image or Document',
-                  onPressed: _isLoading ? null : _showAttachmentModal,
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
+                textInputAction: TextInputAction.newline,
               ),
-              const SizedBox(width: 8),
+            ),
 
-              // Glowing Voice Mic button
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _isListening
-                      ? Colors.redAccent
-                      : Theme.of(context).cardTheme.color,
-                  border: Border.all(
-                    color: _isListening
-                        ? Colors.redAccent
-                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+            // 3. Bottom Control Row: (+ Button, Model Selector Pill, Mic / Send Button)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+              child: Row(
+                children: [
+                  // Minimal Circular Attachment (+) Button
+                  InkWell(
+                    onTap: _isLoading ? null : _showAttachmentModal,
+                    borderRadius: BorderRadius.circular(18),
+                    child: Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF202022) : Colors.grey[200],
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.add_rounded,
+                        size: 20,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
                     ),
-                    if (_isListening)
-                      BoxShadow(
-                        color: Colors.redAccent.withOpacity(0.4),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                  ],
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                    color: _isListening
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.primary,
                   ),
-                  onPressed: _isLoading ? null : _toggleVoice,
-                ),
-              ),
-              const SizedBox(width: 8),
+                  const SizedBox(width: 8),
 
-              // Custom Text input container
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardTheme.color,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withOpacity(0.08),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _textController,
-                          style: const TextStyle(fontSize: 14),
-                          decoration: InputDecoration(
-                            hintText: _isListening
-                                ? 'Listening...'
-                                : 'Type a command...',
-                            hintStyle: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? Colors.grey[600] : Colors.grey[400],
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
-                            ),
-                            border: InputBorder.none,
-                          ),
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: _isLoading
-                              ? null
-                              : (text) => _sendMessage(text),
-                        ),
-                      ),
+                  // Interactive Model Selector Pill
+                  _buildModelSelectorPill(isDark),
 
-                      // Solid Send button
-                      Container(
-                        margin: const EdgeInsets.only(right: 6),
+                  const Spacer(),
+
+                  // Right Side: Mic (when input is empty) OR Up-Arrow Send Button (when input exists)
+                  if (!_hasInput)
+                    InkWell(
+                      onTap: _isLoading ? null : _toggleVoice,
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
+                          color: _isListening
+                              ? Colors.redAccent
+                              : (isDark ? const Color(0xFF202022) : Colors.grey[200]),
                           shape: BoxShape.circle,
-                          color: Theme.of(context).colorScheme.primary,
                         ),
-                        child: IconButton(
-                          icon: Icon(
-                            Icons.send_rounded,
-                            size: 16,
-                            color: Theme.of(context).colorScheme.onPrimary,
-                          ),
-                          onPressed: _isLoading
-                              ? null
-                              : () => _sendMessage(_textController.text),
+                        child: Icon(
+                          _isListening
+                              ? Icons.mic_rounded
+                              : Icons.mic_none_rounded,
+                          size: 20,
+                          color: _isListening
+                              ? Colors.white
+                              : (isDark ? Colors.white70 : Colors.black87),
                         ),
                       ),
-                    ],
+                    )
+                  else
+                    InkWell(
+                      onTap: _isLoading
+                          ? null
+                          : () => _sendMessage(_textController.text),
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white : Colors.black,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.arrow_upward_rounded,
+                          size: 20,
+                          color: isDark ? Colors.black : Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClaudeAttachmentThumbnail(bool isDark) {
+    final isImg = _attachedFileType == 'image';
+    return Padding(
+      padding: const EdgeInsets.only(left: 14, top: 12, bottom: 4),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E20) : Colors.grey[200],
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark ? const Color(0xFF2C2C2E) : Colors.grey[300]!,
+                width: 1.2,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: isImg && _attachedBytes != null
+                  ? Image.memory(
+                      _attachedBytes!,
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                    )
+                  : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _attachedFileType == 'pdf'
+                                ? Icons.picture_as_pdf_rounded
+                                : _attachedFileType == 'code'
+                                    ? Icons.code_rounded
+                                    : Icons.description_rounded,
+                            size: 26,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          const SizedBox(height: 3),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              _attachedFileName ?? 'File',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: isDark ? Colors.grey[400] : Colors.grey[700],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+
+          // Small circular dark close 'X' badge on top-right corner
+          Positioned(
+            top: -6,
+            right: -6,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _attachedFile = null;
+                  _attachedFileName = null;
+                  _attachedFileType = null;
+                  _attachedBytes = null;
+                });
+              },
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2A2A2D) : Colors.black87,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF141414) : Colors.white,
+                    width: 1.5,
                   ),
                 ),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
               ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAttachmentPreviewChip(bool isDark) {
-    final isImg = _attachedFileType == 'image';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF161618) : Colors.grey[100],
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isDark ? const Color(0xFF2C2C2E) : Colors.grey[300]!,
-          width: 1,
+  Widget _buildModelSelectorPill(bool isDark) {
+    final currentModel = _aiService.model;
+    final displayName = _formatModelDisplayName(currentModel);
+
+    return InkWell(
+      onTap: () => _showModelSelectorModal(isDark),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E20) : Colors.grey[200],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark ? const Color(0xFF2C2C2E) : Colors.grey[300]!,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              displayName,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ],
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isImg && _attachedBytes != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.memory(
-                _attachedBytes!,
-                width: 32,
-                height: 32,
-                fit: BoxFit.cover,
-              ),
-            )
-          else
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF242426) : Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                _attachedFileType == 'pdf'
-                    ? Icons.picture_as_pdf_rounded
-                    : _attachedFileType == 'code'
-                        ? Icons.code_rounded
-                        : Icons.description_rounded,
-                size: 18,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _attachedFileName ?? 'Attached file',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                Text(
-                  _attachedFileType?.toUpperCase() ?? 'FILE',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-              ],
+    );
+  }
+
+  String _formatModelDisplayName(String model) {
+    String name = model.trim();
+    if (name.contains('/')) {
+      name = name.split('/').last;
+    }
+    if (name.length > 18) {
+      return '${name.substring(0, 16)}...';
+    }
+    return name;
+  }
+
+  void _showModelSelectorModal(bool isDark) {
+    final currentModel = _aiService.model;
+    final curatedModels = _aiService.getCuratedModelsForCurrentProvider();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.65,
+          ),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF111111) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(
+              color: isDark ? const Color(0xFF2C2C2E) : Colors.grey[300]!,
+              width: 1,
             ),
           ),
-          const SizedBox(width: 6),
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () {
-              setState(() {
-                _attachedFile = null;
-                _attachedFileName = null;
-                _attachedFileType = null;
-                _attachedBytes = null;
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(
-                Icons.close_rounded,
-                size: 16,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF2C2C2E) : Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Select Model',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          _aiService.baseUrl,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      final fetched = await _aiService.fetchAvailableModels(
+                        _aiService.baseUrl,
+                        _aiService.apiKey,
+                      );
+                      if (mounted && fetched.isNotEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Found ${fetched.length} models for provider.'),
+                            backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.black87,
+                          ),
+                        );
+                      }
+                    },
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      size: 15,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                    label: Text(
+                      'Refresh',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Divider(
+                color: isDark ? const Color(0xFF222224) : Colors.grey[200],
+                height: 1,
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: curatedModels.length,
+                  itemBuilder: (context, idx) {
+                    final model = curatedModels[idx];
+                    final isSelected = model == currentModel;
+
+                    return Container(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? (isDark
+                                ? Colors.white.withOpacity(0.08)
+                                : Colors.black.withOpacity(0.05))
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        border: isSelected
+                            ? Border.all(
+                                color: isDark
+                                    ? Colors.white.withOpacity(0.2)
+                                    : Colors.black.withOpacity(0.2),
+                                width: 1,
+                              )
+                            : null,
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        title: Text(
+                          model,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight:
+                                isSelected ? FontWeight.bold : FontWeight.w500,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? Icon(
+                                Icons.check_circle_rounded,
+                                size: 18,
+                                color: isDark ? Colors.white : Colors.black87,
+                              )
+                            : null,
+                        onTap: () async {
+                          await _aiService.setModel(model);
+                          if (mounted) setState(() {});
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
