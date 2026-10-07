@@ -37,6 +37,16 @@ class AgentAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+
+        // ─── Automated Package Installer Assistant ───────────────────
+        val pkg = event.packageName?.toString() ?: ""
+        if (pkg.contains("packageinstaller", ignoreCase = true) ||
+            pkg == "com.google.android.packageinstaller" ||
+            pkg == "com.android.packageinstaller"
+        ) {
+            handlePackageInstallerEvent(event)
+        }
+
         val listener = eventListener ?: return
         
         // Filter out events from our own app so we don't record the Stop Overlay button clicks
@@ -268,6 +278,60 @@ class AgentAccessibilityService : AccessibilityService() {
             rect.centerX().toFloat(),
             rect.centerY().toFloat()
         )
+    }
+
+    private var lastInstallerClickTime = 0L
+
+    private fun handlePackageInstallerEvent(event: AccessibilityEvent) {
+        val now = System.currentTimeMillis()
+        if (now - lastInstallerClickTime < 1200) return
+
+        val root = rootInActiveWindow ?: event.source ?: return
+        try {
+            val targetLabels = listOf("Update", "Install", "UPDATE", "INSTALL", "Install anyway", "INSTALL ANYWAY")
+            for (label in targetLabels) {
+                if (findAndClickInstallerNode(root, label)) {
+                    lastInstallerClickTime = now
+                    android.util.Log.i("PrivateAgentAccessibility", "Auto-clicked installer button: '$label'")
+                    return
+                }
+            }
+
+            val button1List = root.findAccessibilityNodeInfosByViewId("android:id/button1")
+            for (btn in button1List) {
+                val btnText = btn.text?.toString() ?: ""
+                val lower = btnText.lowercase()
+                if (lower.contains("update") || lower.contains("install") || lower.contains("ok")) {
+                    if (clickNodeOrParent(btn)) {
+                        lastInstallerClickTime = now
+                        android.util.Log.i("PrivateAgentAccessibility", "Auto-clicked installer button1: '$btnText'")
+                        btn.recycle()
+                        return
+                    }
+                }
+                btn.recycle()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("PrivateAgentAccessibility", "Error handling package installer event: ${e.message}")
+        }
+    }
+
+    private fun findAndClickInstallerNode(node: AccessibilityNodeInfo, targetText: String): Boolean {
+        val text = node.text?.toString() ?: ""
+        val desc = node.contentDescription?.toString() ?: ""
+        if (text.equals(targetText, ignoreCase = true) || desc.equals(targetText, ignoreCase = true)) {
+            if (clickNodeOrParent(node)) return true
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (findAndClickInstallerNode(child, targetText)) {
+                child.recycle()
+                return true
+            }
+            child.recycle()
+        }
+        return false
     }
 
     /** Click at specific coordinates using gesture */

@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
+import 'shizuku_service.dart';
 
 class AppUpdateInfo {
   final String version;
@@ -26,7 +30,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.2';
+  static const String currentVersion = '1.0.3';
   static const String repoOwner = 'hebimind-boop';
   static const String repoName = 'private-agent-pro';
   static const String latestReleaseUrl =
@@ -231,13 +235,135 @@ class UpdateService {
     }
   }
 
-  /// Show sleek OLED monochrome update dialog
-  static void showUpdateDialog(BuildContext context, AppUpdateInfo info) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => _UpdateDialog(info: info),
+  /// Resolves the optimal destination for the APK:
+  /// Primary: Public Downloads Directory (/storage/emulated/0/Download/PrivateAgent-$version.apk)
+  /// Fallbacks: getExternalStorageDirectory(), external cache, or temporary directory.
+  static Future<File> getApkDestinationFile(String version) async {
+    final fileName = 'PrivateAgent-$version.apk';
+
+    // 1. Primary: Public Downloads directory
+    try {
+      final publicDownloadDir = Directory('/storage/emulated/0/Download');
+      if (await publicDownloadDir.exists()) {
+        final targetFile = File('${publicDownloadDir.path}/$fileName');
+        final testFile = File('${publicDownloadDir.path}/.test_perm');
+        await testFile.writeAsString('ok');
+        await testFile.delete();
+        debugPrint('Using public Downloads directory for update: ${targetFile.path}');
+        return targetFile;
+      }
+    } catch (e) {
+      debugPrint('Direct write to /storage/emulated/0/Download not permitted: $e');
+    }
+
+    // 2. Fallback: External Storage Directory (app-specific external folder)
+    try {
+      final extDir = await getExternalStorageDirectory();
+      if (extDir != null) {
+        final downloadSubdir = Directory('${extDir.path}/Download');
+        if (!await downloadSubdir.exists()) {
+          await downloadSubdir.create(recursive: true);
+        }
+        final targetFile = File('${downloadSubdir.path}/$fileName');
+        debugPrint('Using external storage fallback for update: ${targetFile.path}');
+        return targetFile;
+      }
+    } catch (e) {
+      debugPrint('External storage fallback error: $e');
+    }
+
+    // 3. Fallback: External Cache
+    try {
+      final extCacheDirs = await getExternalCacheDirectories();
+      if (extCacheDirs != null && extCacheDirs.isNotEmpty) {
+        final targetFile = File('${extCacheDirs.first.path}/$fileName');
+        debugPrint('Using external cache fallback for update: ${targetFile.path}');
+        return targetFile;
+      }
+    } catch (_) {}
+
+    // 4. Final Fallback: Temporary directory
+    final tempDir = await getTemporaryDirectory();
+    final targetFile = File('${tempDir.path}/$fileName');
+    debugPrint('Using temporary directory fallback for update: ${targetFile.path}');
+    return targetFile;
+  }
+
+  /// Telegram-Style Multi-Mode Installation Pipeline
+  /// Mode 1: Privileged Shizuku Install (100% Silent with auto-restart)
+  /// Mode 2: Standard PackageInstaller Fallback with FileProvider
+  static Future<bool> installApkFile(
+    File file,
+    String version, {
+    Function(String)? onStatusUpdate,
+  }) async {
+    // Mode 1: Privileged Shizuku Install (100% Silent)
+    try {
+      final shizuku = ShizukuService();
+      final isShizukuAvailable = await shizuku.checkAvailability();
+      if (isShizukuAvailable) {
+        onStatusUpdate?.call('Installing silently via Shizuku...');
+        debugPrint('Shizuku is running. Attempting silent privileged install: ${file.path}');
+        final output = await shizuku.runCommand('pm install -r -d "${file.path}"');
+        debugPrint('Shizuku pm install output: $output');
+
+        if (output.toLowerCase().contains('success')) {
+          onStatusUpdate?.call('Installed! Restarting PrivateAgent...');
+          await Future.delayed(const Duration(milliseconds: 600));
+          // Gracefully restart application
+          await shizuku.runCommand('am start -n com.orailnoor.privateagent/.MainActivity');
+          return true;
+        } else {
+          debugPrint('Shizuku pm install non-success output: $output');
+        }
+      }
+    } catch (e) {
+      debugPrint('Shizuku privileged install error: $e');
+    }
+
+    // Mode 2: Standard PackageInstaller Fallback with FileProvider
+    onStatusUpdate?.call('Launching package installer...');
+    try {
+      debugPrint('Triggering native FileProvider installer MethodChannel...');
+      const channel = MethodChannel('com.privateagent/accessibility');
+      final result = await channel.invokeMethod<bool>('installApk', {
+        'filePath': file.path,
+      });
+      if (result == true) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Native installApk MethodChannel failed: $e, trying AndroidIntent');
+    }
+
+    // Fallback: AndroidIntent with FileProvider content URI
+    try {
+      final relativePath = file.path.startsWith('/storage/emulated/0/')
+          ? file.path.replaceFirst('/storage/emulated/0/', '')
+          : file.path.split('/').last;
+      final contentUri = 'content://com.orailnoor.privateagent.fileprovider/external_files/$relativePath';
+
+      final intent = AndroidIntent(
+        action: 'android.intent.action.VIEW',
+        data: contentUri,
+        type: 'application/vnd.android.package-archive',
+        flags: <int>[
+          Flag.FLAG_ACTIVITY_NEW_TASK,
+          Flag.FLAG_GRANT_READ_URI_PERMISSION,
+        ],
+      );
+      await intent.launch();
+      return true;
+    } catch (e) {
+      debugPrint('AndroidIntent launch failed: $e, falling back to OpenFilex');
+    }
+
+    // Fallback: OpenFilex
+    final openResult = await OpenFilex.open(
+      file.path,
+      type: 'application/vnd.android.package-archive',
     );
+    return openResult.type == ResultType.done;
   }
 }
 
@@ -272,8 +398,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       }
 
       final contentLength = response.contentLength ?? widget.info.apkSizeBytes;
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/PrivateAgent-${widget.info.version}.apk');
+      final file = await UpdateService.getApkDestinationFile(widget.info.version);
       final sink = file.openWrite();
 
       int receivedBytes = 0;
@@ -295,17 +420,21 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
       if (mounted) {
         setState(() {
-          _downloadStatus = 'Launching package installer...';
+          _downloadStatus = 'Installing update...';
         });
       }
 
-      // Launch APK installer
-      final result = await OpenFilex.open(
-        file.path,
-        type: 'application/vnd.android.package-archive',
+      await UpdateService.installApkFile(
+        file,
+        widget.info.version,
+        onStatusUpdate: (status) {
+          if (mounted) {
+            setState(() {
+              _downloadStatus = status;
+            });
+          }
+        },
       );
-
-      debugPrint('OpenFilex install result: ${result.message}');
 
       if (mounted) {
         Navigator.of(context).pop();
