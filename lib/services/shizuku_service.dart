@@ -8,6 +8,12 @@ class ShizukuService {
   bool get isAvailable => _isAvailable;
   bool get hasPermission => _hasPermission;
 
+  /// Static helper to check if Shizuku is currently running and available
+  static Future<bool> isAvailable() async {
+    final service = ShizukuService();
+    return await service.checkAvailability();
+  }
+
   /// Check if Shizuku is installed and running
   Future<bool> checkAvailability() async {
     try {

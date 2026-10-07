@@ -27,11 +27,21 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.4';
+  static const String currentVersion = '1.0.5';
   static const String repoOwner = 'hebimind-boop';
   static const String repoName = 'private-agent-pro';
   static const String latestReleaseUrl =
       'https://api.github.com/repos/$repoOwner/$repoName/releases/latest';
+
+  /// Resolves the installed version dynamically from Android PackageInfo, falling back to currentVersion
+  static Future<String> getInstalledVersion() async {
+    try {
+      const channel = MethodChannel('com.privateagent/accessibility');
+      final ver = await channel.invokeMethod<String>('getAppVersion');
+      if (ver != null && ver.isNotEmpty) return ver;
+    } catch (_) {}
+    return currentVersion;
+  }
 
   /// Clean version string (e.g., 'v1.0.3-pro' -> '1.0.3')
   static String _cleanVersion(String v) {
@@ -94,24 +104,57 @@ class UpdateService {
       final publishedAtStr = data['published_at'] as String? ?? '';
       final publishedAt = DateTime.tryParse(publishedAtStr) ?? DateTime.now();
 
-      // Find APK asset
+      // Find exact release APK asset:
+      // Must prioritize PrivateAgent-*pro*.apk or PrivateAgent-*.apk (complete ~58.8 MB APK)
+      // and explicitly ignore split architecture APKs (arm64-v8a, armeabi-v7a, x86_64).
       String downloadUrl = '';
       int apkSize = 0;
       final assets = data['assets'] as List<dynamic>? ?? [];
 
+      // Pass 1: exact PrivateAgent-*pro*.apk match
       for (final asset in assets) {
         final name = (asset['name'] as String? ?? '').toLowerCase();
-        if (name.endsWith('.apk')) {
+        if (name.endsWith('.apk') && name.contains('privateagent') && name.contains('pro')) {
           downloadUrl = asset['browser_download_url'] as String? ?? '';
           apkSize = asset['size'] as int? ?? 0;
+          debugPrint('Selected Pass 1 Pro APK: ${asset['name']} ($apkSize bytes)');
           break;
         }
       }
 
-      // Fallback direct URL if asset not in list
+      // Pass 2: any asset named PrivateAgent-*.apk
+      if (downloadUrl.isEmpty) {
+        for (final asset in assets) {
+          final name = (asset['name'] as String? ?? '').toLowerCase();
+          if (name.endsWith('.apk') && name.startsWith('privateagent')) {
+            downloadUrl = asset['browser_download_url'] as String? ?? '';
+            apkSize = asset['size'] as int? ?? 0;
+            debugPrint('Selected Pass 2 PrivateAgent APK: ${asset['name']} ($apkSize bytes)');
+            break;
+          }
+        }
+      }
+
+      // Pass 3: any non-split release APK (avoiding v8a, v7a, x86_64 partial architecture builds)
+      if (downloadUrl.isEmpty) {
+        for (final asset in assets) {
+          final name = (asset['name'] as String? ?? '').toLowerCase();
+          if (name.endsWith('.apk') &&
+              !name.contains('v8a') &&
+              !name.contains('v7a') &&
+              !name.contains('x86')) {
+            downloadUrl = asset['browser_download_url'] as String? ?? '';
+            apkSize = asset['size'] as int? ?? 0;
+            debugPrint('Selected Pass 3 Full APK: ${asset['name']} ($apkSize bytes)');
+            break;
+          }
+        }
+      }
+
+      // Fallback direct URL if asset not found in metadata
       if (downloadUrl.isEmpty && tagName.isNotEmpty) {
         downloadUrl =
-            'https://github.com/$repoOwner/$repoName/releases/download/$tagName/PrivateAgent-$tagName.apk';
+            'https://github.com/$repoOwner/$repoName/releases/download/$tagName/PrivateAgent-$tagName-pro.apk';
       }
 
       if (downloadUrl.isEmpty) {
@@ -119,7 +162,8 @@ class UpdateService {
       }
 
       final remoteVersion = _cleanVersion(tagName);
-      if (_isVersionNewer(tagName, currentVersion)) {
+      final localVersion = await getInstalledVersion();
+      if (_isVersionNewer(tagName, localVersion)) {
         return AppUpdateInfo(
           version: remoteVersion,
           rawTag: tagName,
@@ -242,24 +286,27 @@ class UpdateService {
   }
 
   /// Resolves the optimal destination for the APK:
-  /// Primary: Public Downloads Directory (/storage/emulated/0/Download/PrivateAgent-$version.apk)
+  /// Primary: Public Downloads Directory (/storage/emulated/0/Download/PrivateAgent-v$version-pro.apk)
   /// Fallbacks: getExternalStorageDirectory(), external cache, or temporary directory.
   static Future<File> getApkDestinationFile(String version) async {
-    final fileName = 'PrivateAgent-$version.apk';
+    final cleanVer = _cleanVersion(version);
+    final fileName = 'PrivateAgent-v$cleanVer-pro.apk';
 
-    // 1. Primary: Public Downloads directory
+    // 1. Primary: Real public Android Downloads directory (/storage/emulated/0/Download)
     try {
-      final publicDownloadDir = Directory('/storage/emulated/0/Download');
-      if (await publicDownloadDir.exists()) {
-        final targetFile = File('${publicDownloadDir.path}/$fileName');
-        final testFile = File('${publicDownloadDir.path}/.test_perm');
-        await testFile.writeAsString('ok');
-        await testFile.delete();
-        debugPrint('Using public Downloads directory for update: ${targetFile.path}');
-        return targetFile;
+      final downloadDir = Directory('/storage/emulated/0/Download');
+      if (!await downloadDir.exists()) {
+        await downloadDir.create(recursive: true);
       }
+      final targetFile = File('${downloadDir.path}/$fileName');
+      // Test write capability to ensure file can be written to public storage
+      final testFile = File('${downloadDir.path}/.test_write_${DateTime.now().millisecondsSinceEpoch}');
+      await testFile.writeAsString('ok');
+      await testFile.delete();
+      debugPrint('Using public Downloads directory for update: ${targetFile.path}');
+      return targetFile;
     } catch (e) {
-      debugPrint('Direct write to /storage/emulated/0/Download not permitted: $e');
+      debugPrint('Public /storage/emulated/0/Download write restricted: $e');
     }
 
     // 2. Fallback: External Storage Directory (app-specific external folder)
@@ -295,43 +342,94 @@ class UpdateService {
     return targetFile;
   }
 
+  /// Resolves direct stream response by following 301/302 redirects up to [maxHops]
+  static Future<http.StreamedResponse> fetchDownloadStream(
+    String initialUrl, {
+    int maxHops = 5,
+  }) async {
+    final client = http.Client();
+    var currentUri = Uri.parse(initialUrl);
+    int hops = 0;
+
+    while (hops < maxHops) {
+      final request = http.Request('GET', currentUri);
+      request.followRedirects = false; // Inspect each hop manually
+      request.headers['User-Agent'] = 'PrivateAgent-App';
+      request.headers['Accept'] =
+          'application/octet-stream, application/vnd.android.package-archive, */*';
+
+      final response = await client.send(request);
+
+      if (response.statusCode == 301 ||
+          response.statusCode == 302 ||
+          response.statusCode == 303 ||
+          response.statusCode == 307 ||
+          response.statusCode == 308) {
+        final location = response.headers['location'];
+        if (location != null && location.isNotEmpty) {
+          final nextUri = currentUri.resolve(location);
+          debugPrint('Redirect hop ${hops + 1}: $currentUri -> $nextUri');
+          currentUri = nextUri;
+          hops++;
+          await response.stream.drain();
+          continue;
+        }
+      }
+
+      if (response.statusCode != 200) {
+        await response.stream.drain();
+        client.close();
+        throw Exception('Download failed with HTTP ${response.statusCode}');
+      }
+
+      return response;
+    }
+
+    client.close();
+    throw Exception('Too many redirects ($hops hops)');
+  }
+
   /// Telegram-Style Dual-Mode Installation Pipeline
-  /// Mode 1: Privileged Shizuku Install (100% Silent with auto-restart)
+  /// Mode 1: Privileged Shizuku Install (100% Silent Zero-Click with auto-restart)
   /// Mode 2: Standard PackageInstaller via FileProvider (with unknown apps permission check)
   static Future<bool> installApkFile(
     File file,
     String version, {
     Function(String)? onStatusUpdate,
   }) async {
-    const channel = MethodChannel('com.privateagent/accessibility');
-
-    // Mode 1: Privileged Shizuku Install (100% Silent)
+    // Mode 1: 100% Silent Autonomous Install via Shizuku (Zero-Click)
     try {
-      final shizuku = ShizukuService();
-      final isShizukuAvailable = await shizuku.checkAvailability();
-      if (isShizukuAvailable) {
+      final hasShizuku = await ShizukuService.isAvailable();
+      if (hasShizuku) {
         onStatusUpdate?.call('Installing silently via Shizuku...');
-        debugPrint('Shizuku is running. Attempting silent privileged install: ${file.path}');
-        final output = await shizuku.runCommand('pm install -r -d "${file.path}"');
-        debugPrint('Shizuku pm install output: $output');
+        debugPrint('Shizuku is active. Executing zero-click privileged install: ${file.path}');
 
-        if (output.toLowerCase().contains('success')) {
+        final shizuku = ShizukuService();
+        await shizuku.checkAvailability();
+        final installOutput = await shizuku.runCommand('pm install -r -d "${file.path}"');
+        debugPrint('Shizuku pm install output: $installOutput');
+
+        if (installOutput.toLowerCase().contains('success')) {
           onStatusUpdate?.call('Installed! Restarting PrivateAgent...');
-          await Future.delayed(const Duration(milliseconds: 600));
-          // Gracefully restart application
-          await shizuku.runCommand('am start -n com.orailnoor.privateagent/.MainActivity');
+          await Future.delayed(const Duration(milliseconds: 500));
+          // 100% silent relaunch with zero system dialogs
+          await shizuku.runCommand(
+            'am start -n com.orailnoor.privateagent/com.orailnoor.privateagent.MainActivity',
+          );
           return true;
         } else {
-          debugPrint('Shizuku pm install non-success output: $output');
+          debugPrint('Shizuku install failed: $installOutput');
         }
       }
     } catch (e) {
       debugPrint('Shizuku privileged install error: $e');
     }
 
-    // Mode 2: Standard PackageInstaller via FileProvider
+    // Mode 2: Standard PackageInstaller via FileProvider Fallback
     onStatusUpdate?.call('Preparing installer...');
     try {
+      const channel = MethodChannel('com.privateagent/accessibility');
+
       // Check if "Install Unknown Apps" permission is needed (Android 8.0+)
       final canInstall = await channel.invokeMethod<bool>('checkInstallPermission');
       if (canInstall != true) {
@@ -381,16 +479,22 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     });
 
     try {
-      final client = http.Client();
-      final request = http.Request('GET', Uri.parse(widget.info.apkDownloadUrl));
-      final response = await client.send(request);
+      final response = await UpdateService.fetchDownloadStream(widget.info.apkDownloadUrl);
 
-      if (response.statusCode != 200) {
-        throw Exception('Download failed with HTTP ${response.statusCode}');
+      int contentLength = response.contentLength ?? 0;
+      if (contentLength <= 0) {
+        contentLength = int.tryParse(response.headers['content-length'] ?? '') ?? 0;
+      }
+      if (contentLength <= 0) {
+        contentLength = widget.info.apkSizeBytes;
       }
 
-      final contentLength = response.contentLength ?? widget.info.apkSizeBytes;
       final file = await UpdateService.getApkDestinationFile(widget.info.version);
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
       final sink = file.openWrite();
 
       int receivedBytes = 0;
@@ -399,16 +503,21 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         receivedBytes += chunk.length;
         if (contentLength > 0 && mounted) {
           setState(() {
-            _downloadProgress = receivedBytes / contentLength;
+            _downloadProgress = (receivedBytes / contentLength).clamp(0.0, 1.0);
             final mbReceived = (receivedBytes / (1024 * 1024)).toStringAsFixed(1);
             final mbTotal = (contentLength / (1024 * 1024)).toStringAsFixed(1);
-            _downloadStatus = '$mbReceived MB / $mbTotal MB (${(_downloadProgress * 100).toInt()}%)';
+            _downloadStatus =
+                '$mbReceived MB / $mbTotal MB (${(_downloadProgress * 100).toInt()}%)';
           });
         }
       }).asFuture();
 
+      // Ensure 0 bytes remain buffered: flush and close completely before triggering installation
+      await sink.flush();
       await sink.close();
-      client.close();
+
+      final writtenBytes = await file.length();
+      debugPrint('APK download completed: ${file.path} ($writtenBytes bytes written)');
 
       if (mounted) {
         setState(() {

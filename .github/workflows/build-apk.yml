@@ -62,26 +62,25 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.5-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.6-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.5-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.5' }}
-          name: "PrivateAgent Pro v1.0.5 - Telegram-Spec PackageInstaller Overhaul"
+            build/app/outputs/flutter-apk/PrivateAgent-v1.0.6-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.6' }}
+          name: "PrivateAgent Pro v1.0.6 - Full-Size APK Stream & Silent Shizuku Auto-Installer"
           body: |
-            ### PrivateAgent Pro v1.0.5
-            - **Telegram-Spec PackageInstaller Overhaul**: Standard Android FileProvider intent (`ACTION_VIEW`, `FLAG_GRANT_READ_URI_PERMISSION`, `FLAG_ACTIVITY_NEW_TASK`) with automatic `ACTION_MANAGE_UNKNOWN_APP_SOURCES` permission handling.
-            - **Cleaned Settings & Branding**: Minimal About PrivateAgent section pointing directly to `https://github.com/hebimind-boop/private-agent-pro`.
-            - **Live Linear Download Progress**: Real-time percentage indicator with immediate native installer launch upon completion.
-            - **Privileged Shizuku Silent Mode**: 100% silent background installation and graceful restart when Shizuku is granted.
-            - **Consistent Keystore Signing**: Debug keystore signing enforced across CI release builds for seamless OTA updates.
+            ### PrivateAgent Pro v1.0.6
+            - **Exact Asset Targeting & Full APK Stream**: Explicitly targets the full universal `PrivateAgent-*-pro.apk` (~58.8 MB) instead of partial architecture splits, with multi-hop HTTP 301/302 redirect auto-following.
+            - **Public Downloads Persistence**: Downloads directly to `/storage/emulated/0/Download/PrivateAgent-v1.0.6-pro.apk` with guaranteed stream buffer flushing prior to handoff.
+            - **Zero-Click Silent Auto-Installation (Shizuku)**: Automated background installation via privileged `pm install -r -d` and immediate silent restart without user prompts when Shizuku is granted.
+            - **PackageInstaller Fallback**: FileProvider `ACTION_VIEW` intent with `ACTION_MANAGE_UNKNOWN_APP_SOURCES` permission handling for non-Shizuku environments.
 
             #### Direct Download
-            Download **PrivateAgent-v1.0.5-pro.apk** below to install or update.
+            Download **PrivateAgent-v1.0.6-pro.apk** below to install or update.
           draft: false
           prerelease: false
           make_latest: true

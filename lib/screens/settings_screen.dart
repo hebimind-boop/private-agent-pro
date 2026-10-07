@@ -908,7 +908,12 @@ class _SettingsScreenState extends State<SettingsScreen>
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('PrivateAgent Pro'),
-                subtitle: Text('v${UpdateService.currentVersion}'),
+                subtitle: FutureBuilder<String>(
+                  future: UpdateService.getInstalledVersion(),
+                  initialData: '1.0.6',
+                  builder: (context, snapshot) =>
+                      Text('v${snapshot.data ?? '1.0.6'}'),
+                ),
                 leading: const Icon(Icons.info_outline_rounded),
               ),
               ListTile(
