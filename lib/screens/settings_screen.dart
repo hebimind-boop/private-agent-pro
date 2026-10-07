@@ -907,42 +907,18 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: [
               ListTile(
                 contentPadding: EdgeInsets.zero,
+                title: const Text('PrivateAgent Pro'),
+                subtitle: Text('v${UpdateService.currentVersion}'),
+                leading: const Icon(Icons.info_outline_rounded),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
                 title: const Text('Project Repository'),
                 subtitle: const Text('View source code on GitHub'),
                 leading: const Icon(Icons.code_rounded),
                 onTap: () {
                   launchUrl(
-                    Uri.parse('https://github.com/orailnoor/private-agent'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Orailnoor on YouTube'),
-                subtitle: const Text('Subscribe for tutorials and updates'),
-                leading: const Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: Colors.red,
-                ),
-                onTap: () {
-                  launchUrl(
-                    Uri.parse('https://www.youtube.com/orailnoor'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Tech Jarves on YouTube'),
-                subtitle: const Text('Subscribe for tutorials and updates'),
-                leading: const Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: Colors.red,
-                ),
-                onTap: () {
-                  launchUrl(
-                    Uri.parse('https://www.youtube.com/techjarves'),
+                    Uri.parse('https://github.com/hebimind-boop/private-agent-pro'),
                     mode: LaunchMode.externalApplication,
                   );
                 },

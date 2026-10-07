@@ -62,28 +62,26 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.4-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.5-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.4-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.4' }}
-          name: "PrivateAgent Pro v1.0.4 - Telegram-Style Smart OTA Updater"
+            build/app/outputs/flutter-apk/PrivateAgent-v1.0.5-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.5' }}
+          name: "PrivateAgent Pro v1.0.5 - Telegram-Spec PackageInstaller Overhaul"
           body: |
-            ### PrivateAgent Pro v1.0.4
-            - **Telegram-Style Smart OTA Updater**: Public storage persistence (`/storage/emulated/0/Download/PrivateAgent-1.0.4.apk`) and live progress tracking.
-            - **Autonomous Dual-Mode Installation**:
-              - *Mode 1 (Shizuku)*: 100% silent privileged background installation and automatic application restart.
-              - *Mode 2 (FileProvider)*: Standard high-reliability Android FileProvider content URI installation.
-              - *Mode 3 (Accessibility Assistant)*: Autonomous click-through for native Android package installer.
-            - **Claude AI-Style Chat Dock**: Unified container with rounded attachment thumbnails and multi-model selector pill.
-            - **Pure OLED Black & White**: High-contrast theme with crisp floating SnackBars.
+            ### PrivateAgent Pro v1.0.5
+            - **Telegram-Spec PackageInstaller Overhaul**: Standard Android FileProvider intent (`ACTION_VIEW`, `FLAG_GRANT_READ_URI_PERMISSION`, `FLAG_ACTIVITY_NEW_TASK`) with automatic `ACTION_MANAGE_UNKNOWN_APP_SOURCES` permission handling.
+            - **Cleaned Settings & Branding**: Minimal About PrivateAgent section pointing directly to `https://github.com/hebimind-boop/private-agent-pro`.
+            - **Live Linear Download Progress**: Real-time percentage indicator with immediate native installer launch upon completion.
+            - **Privileged Shizuku Silent Mode**: 100% silent background installation and graceful restart when Shizuku is granted.
+            - **Consistent Keystore Signing**: Debug keystore signing enforced across CI release builds for seamless OTA updates.
 
             #### Direct Download
-            Download **PrivateAgent-v1.0.4-pro.apk** below to install or update.
+            Download **PrivateAgent-v1.0.5-pro.apk** below to install or update.
           draft: false
           prerelease: false
           make_latest: true

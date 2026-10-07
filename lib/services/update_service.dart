@@ -4,9 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
 import 'shizuku_service.dart';
 
 class AppUpdateInfo {
@@ -30,7 +27,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.3';
+  static const String currentVersion = '1.0.4';
   static const String repoOwner = 'hebimind-boop';
   static const String repoName = 'private-agent-pro';
   static const String latestReleaseUrl =
@@ -298,14 +295,16 @@ class UpdateService {
     return targetFile;
   }
 
-  /// Telegram-Style Multi-Mode Installation Pipeline
+  /// Telegram-Style Dual-Mode Installation Pipeline
   /// Mode 1: Privileged Shizuku Install (100% Silent with auto-restart)
-  /// Mode 2: Standard PackageInstaller Fallback with FileProvider
+  /// Mode 2: Standard PackageInstaller via FileProvider (with unknown apps permission check)
   static Future<bool> installApkFile(
     File file,
     String version, {
     Function(String)? onStatusUpdate,
   }) async {
+    const channel = MethodChannel('com.privateagent/accessibility');
+
     // Mode 1: Privileged Shizuku Install (100% Silent)
     try {
       final shizuku = ShizukuService();
@@ -330,11 +329,21 @@ class UpdateService {
       debugPrint('Shizuku privileged install error: $e');
     }
 
-    // Mode 2: Standard PackageInstaller Fallback with FileProvider
-    onStatusUpdate?.call('Launching package installer...');
+    // Mode 2: Standard PackageInstaller via FileProvider
+    onStatusUpdate?.call('Preparing installer...');
     try {
+      // Check if "Install Unknown Apps" permission is needed (Android 8.0+)
+      final canInstall = await channel.invokeMethod<bool>('checkInstallPermission');
+      if (canInstall != true) {
+        onStatusUpdate?.call('Grant "Install Unknown Apps" permission...');
+        await channel.invokeMethod('requestInstallPermission');
+        // Wait for user to return from settings
+        await Future.delayed(const Duration(seconds: 2));
+      }
+
+      // Launch FileProvider-based native installer
+      onStatusUpdate?.call('Launching package installer...');
       debugPrint('Triggering native FileProvider installer MethodChannel...');
-      const channel = MethodChannel('com.privateagent/accessibility');
       final result = await channel.invokeMethod<bool>('installApk', {
         'filePath': file.path,
       });
@@ -342,37 +351,11 @@ class UpdateService {
         return true;
       }
     } catch (e) {
-      debugPrint('Native installApk MethodChannel failed: $e, trying AndroidIntent');
+      debugPrint('Native installApk failed: $e');
     }
 
-    // Fallback: AndroidIntent with FileProvider content URI
-    try {
-      final relativePath = file.path.startsWith('/storage/emulated/0/')
-          ? file.path.replaceFirst('/storage/emulated/0/', '')
-          : file.path.split('/').last;
-      final contentUri = 'content://com.orailnoor.privateagent.fileprovider/external_files/$relativePath';
-
-      final intent = AndroidIntent(
-        action: 'android.intent.action.VIEW',
-        data: contentUri,
-        type: 'application/vnd.android.package-archive',
-        flags: <int>[
-          Flag.FLAG_ACTIVITY_NEW_TASK,
-          Flag.FLAG_GRANT_READ_URI_PERMISSION,
-        ],
-      );
-      await intent.launch();
-      return true;
-    } catch (e) {
-      debugPrint('AndroidIntent launch failed: $e, falling back to OpenFilex');
-    }
-
-    // Fallback: OpenFilex
-    final openResult = await OpenFilex.open(
-      file.path,
-      type: 'application/vnd.android.package-archive',
-    );
-    return openResult.type == ResultType.done;
+    onStatusUpdate?.call('Installation could not be started.');
+    return false;
   }
 }
 

@@ -234,6 +234,29 @@ class MainActivity : FlutterActivity() {
                             }
                         }
 
+                        "checkInstallPermission" -> {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                result.success(context.packageManager.canRequestPackageInstalls())
+                            } else {
+                                result.success(true)
+                            }
+                        }
+
+                        "requestInstallPermission" -> {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    Uri.parse("package:${context.packageName}")
+                                ).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                                result.success(true)
+                            } else {
+                                result.success(true)
+                            }
+                        }
+
                         "installApk" -> {
                             val filePath = call.argument<String>("filePath") ?: ""
                             val file = java.io.File(filePath)
@@ -241,6 +264,15 @@ class MainActivity : FlutterActivity() {
                                 result.error("FILE_NOT_FOUND", "APK file does not exist at $filePath", null)
                             } else {
                                 try {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+                                        val manageIntent = Intent(
+                                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                            Uri.parse("package:${context.packageName}")
+                                        ).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(manageIntent)
+                                    }
                                     val contentUri = androidx.core.content.FileProvider.getUriForFile(
                                         context,
                                         "${context.packageName}.fileprovider",
