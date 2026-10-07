@@ -235,6 +235,15 @@ class UpdateService {
     }
   }
 
+  /// Show sleek OLED monochrome update dialog
+  static void showUpdateDialog(BuildContext context, AppUpdateInfo info) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => _UpdateDialog(info: info),
+    );
+  }
+
   /// Resolves the optimal destination for the APK:
   /// Primary: Public Downloads Directory (/storage/emulated/0/Download/PrivateAgent-$version.apk)
   /// Fallbacks: getExternalStorageDirectory(), external cache, or temporary directory.
