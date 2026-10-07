@@ -399,13 +399,12 @@ class UpdateService {
   }) async {
     // Mode 1: 100% Silent Autonomous Install via Shizuku (Zero-Click)
     try {
-      final hasShizuku = await ShizukuService.isAvailable();
+      final shizuku = ShizukuService();
+      final hasShizuku = await shizuku.checkAvailability();
       if (hasShizuku) {
         onStatusUpdate?.call('Installing silently via Shizuku...');
         debugPrint('Shizuku is active. Executing zero-click privileged install: ${file.path}');
 
-        final shizuku = ShizukuService();
-        await shizuku.checkAvailability();
         final installOutput = await shizuku.runCommand('pm install -r -d "${file.path}"');
         debugPrint('Shizuku pm install output: $installOutput');
 
