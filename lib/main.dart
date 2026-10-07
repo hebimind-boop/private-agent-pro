@@ -123,6 +123,20 @@ class PrivateAgentApp extends StatelessWidget {
                 ), // Slate-200
               ),
             ),
+            snackBarTheme: SnackBarThemeData(
+              backgroundColor: const Color(0xFF1E1E1E),
+              contentTextStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              actionTextColor: Colors.white,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFF333333), width: 1),
+              ),
+            ),
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
@@ -164,6 +178,20 @@ class PrivateAgentApp extends StatelessWidget {
                   color: Color(0xFF2C2C2E),
                   width: 1.2,
                 ),
+              ),
+            ),
+            snackBarTheme: SnackBarThemeData(
+              backgroundColor: const Color(0xFF1E1E1E),
+              contentTextStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              actionTextColor: Colors.white,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFF333333), width: 1),
               ),
             ),
           ),

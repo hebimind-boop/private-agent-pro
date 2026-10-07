@@ -148,26 +148,36 @@ class UpdateService {
 
   /// Manual check from Settings screen
   static Future<void> checkManually(BuildContext context) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
+        content: const Row(
           children: [
             SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: isDark ? Colors.white : Colors.black,
+                color: Colors.white,
               ),
             ),
-            const SizedBox(width: 12),
-            const Text('Checking for updates...'),
+            SizedBox(width: 12),
+            Text(
+              'Checking for updates...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
         duration: const Duration(seconds: 2),
-        backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        backgroundColor: const Color(0xFF1E1E1E),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFF333333), width: 1),
+        ),
       ),
     );
 
@@ -180,8 +190,20 @@ class UpdateService {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('You are using the latest version (v$currentVersion).'),
-            backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.black87,
+            content: Text(
+              'You are using the latest version (v$currentVersion).',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            backgroundColor: const Color(0xFF1E1E1E),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Color(0xFF333333), width: 1),
+            ),
           ),
         );
       }
@@ -189,8 +211,20 @@ class UpdateService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to check for updates: $e'),
-            backgroundColor: Colors.redAccent,
+            content: Text(
+              'Failed to check for updates: $e',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            backgroundColor: const Color(0xFF7F1D1D),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Color(0xFFB91C1C), width: 1),
+            ),
           ),
         );
       }
@@ -296,10 +330,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF111111) : Colors.white,
+          color: isDark ? const Color(0xFF141414) : Colors.white,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isDark ? const Color(0xFF2C2C2E) : Colors.grey[300]!,
+            color: isDark ? const Color(0xFF262626) : Colors.grey[300]!,
             width: 1.2,
           ),
           boxShadow: [

@@ -62,21 +62,29 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.2-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.3-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.2-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.2-pro' }}
-          name: ${{ github.ref_type == 'tag' && format('PrivateAgent {0}', github.ref_name) || 'PrivateAgent Pro v1.0.2' }}
+            build/app/outputs/flutter-apk/PrivateAgent-v1.0.3-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.3' }}
+          name: "PrivateAgent Pro v1.0.3 - Claude UI & Multi-Model Overhaul"
           body: |
-            ### PrivateAgent Release
-            - Automated release built by GitHub Actions CI/CD.
-            - Direct download APK attached below.
+            ### PrivateAgent Pro v1.0.3
+            - **Claude AI-Style Chat Dock**: Unified card container with rounded attachment thumbnails and interactive model selector pill.
+            - **Multi-Model Provider Hub**: Instant runtime switching between NVIDIA NIM, DeepSeek, Groq, Ollama, and OpenAI.
+            - **In-Bubble Thinking Animation**: Sleek pulsating 3-dot wave with inline stop button.
+            - **Multimodal Image Viewer**: Fullscreen pan & pinch-to-zoom for user image attachments.
+            - **In-App Auto-Updater**: Background update check and seamless APK installer.
+            - **OLED Monochrome Theme**: High-contrast SnackBar and toast styling.
+
+            #### Direct Download
+            Download **PrivateAgent-v1.0.3-pro.apk** below to install or update.
           draft: false
           prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
