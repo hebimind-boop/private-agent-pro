@@ -204,7 +204,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final intent = AgentOrchestrator.classifyIntent(outgoingPrompt);
 
-    if (intent == UserIntent.chat) {
+    try {
+      if (intent == UserIntent.chat) {
       // ----------------------------------------------------
       // CONVERSATIONAL / INFORMATIONAL INTENT:
       // Directly invoke LLM text generation (sendMessageStream).
@@ -339,7 +340,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _scrollToBottom();
         }
       }
-    } finally {
+    }
+  } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
