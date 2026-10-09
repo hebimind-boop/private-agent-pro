@@ -9,6 +9,7 @@ import 'task_history_logger.dart';
 import 'shizuku_service.dart';
 import 'skill_memory_service.dart';
 import 'recovery_engine.dart';
+import 'system_control_service.dart';
 import '../models/saved_skill.dart';
 
 /// Executes multi-step UI automation tasks using LLM-guided screen reading.
@@ -23,6 +24,7 @@ class TaskExecutor {
   final NotificationService _notificationService = NotificationService();
   final SkillMemoryService _skillMemory = SkillMemoryService();
   final RecoveryEngine _recoveryEngine = RecoveryEngine();
+  final SystemControlService _systemControl = SystemControlService();
 
   /// Callback to report progress messages to the UI
   final void Function(String message)? onProgress;
@@ -72,6 +74,8 @@ Available actions:
 - press_back: {} - Press the back button
 - press_home: {} - Press the home button
 - open_app: {"app_name": "WhatsApp"} - Open an app
+- set_volume: {"level": 80} - Set media volume from 0 to 100
+- set_brightness: {"level": 80} - Set screen brightness from 0 to 100
 - wait: {} - Wait a moment for content to load
 - done: {} - Task is complete
 
@@ -515,6 +519,18 @@ Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. 
           final appName = params['app_name'] as String? ?? '';
           actionResult = await _appLauncher.openApp(appName);
           success = actionResult.startsWith('Opened');
+          break;
+
+        case 'set_volume':
+          final level = (params['level'] as num?)?.toInt() ?? 50;
+          actionResult = await _systemControl.setVolume(level);
+          success = true;
+          break;
+
+        case 'set_brightness':
+          final level = (params['level'] as num?)?.toInt() ?? 50;
+          actionResult = await _systemControl.setBrightness(level);
+          success = true;
           break;
 
         case 'wait':

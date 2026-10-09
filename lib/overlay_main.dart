@@ -33,8 +33,6 @@ class _OverlayAppState extends State<OverlayApp> {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final List<ChatMessage> _messages = [];
 
-  // Chat vs Agent mode switch
-  String _mode = 'chat'; // 'chat' or 'agent'
   StreamSubscription<String>? _chatStreamSubscription;
 
   late final AiService _aiService;
@@ -65,7 +63,7 @@ class _OverlayAppState extends State<OverlayApp> {
       ChatMessage(
         role: 'assistant',
         content:
-            'Hi! I am your Private Agent. Ask me anything or switch to Agent mode to perform tasks on screen.',
+            'Hi! I am your Private Agent. Ask me anything or tell me to perform any task on your device.',
       ),
     );
   }
@@ -213,13 +211,14 @@ class _OverlayAppState extends State<OverlayApp> {
 
     await _servicesReady;
 
-    final isActionCommand =
-        _mode == 'agent' && AgentOrchestrator.isActionIntent(userTask);
+    final intent = AgentOrchestrator.classifyIntent(userTask);
 
-    if (!isActionCommand) {
+    if (intent == UserIntent.chat) {
       // ----------------------------------------------------
-      // CHAT MODE: Pure LLM completion without touching
-      // accessibility bridge or automating phone UI.
+      // CONVERSATIONAL / INFORMATIONAL INTENT:
+      // Directly invoke LLM text generation (sendMessageStream).
+      // Render normal response bubble. Do not touch accessibility,
+      // do not scan or touch other apps.
       // ----------------------------------------------------
       final assistantMessage = ChatMessage(role: 'assistant', content: '');
       setState(() {
@@ -309,8 +308,20 @@ class _OverlayAppState extends State<OverlayApp> {
     }
 
     // ----------------------------------------------------
-    // AGENT MODE: Autonomous phone UI actions
+    // ACTION / DEVICE CONTROL INTENT:
+    // Route to TaskExecutor.executeTask(userTask).
+    // Show clean inline execution badge ([EXECUTING TASK])
+    // and perform device actions seamlessly.
     // ----------------------------------------------------
+    final badgeMessage = ChatMessage(
+      role: 'assistant',
+      content: '[EXECUTING TASK] Starting: $userTask',
+    );
+    setState(() {
+      _messages.add(badgeMessage);
+      _scrollToBottom();
+    });
+    _persistOverlayMessage(badgeMessage);
     if (!await _screenService.waitUntilReady()) {
       // Re-broadcast once if engine was cold-starting
       try {
@@ -442,7 +453,7 @@ class _OverlayAppState extends State<OverlayApp> {
       );
       // Move to a safe position so the expanded panel stays on-screen
       await FlutterOverlayWindow.moveOverlay(initialPosition);
-      await FlutterOverlayWindow.resizeOverlay(300, 380, false);
+      await FlutterOverlayWindow.resizeOverlay(300, 360, false);
       setState(() {
         _isExpanded = true;
         _scrollToBottom();
@@ -562,12 +573,12 @@ class _OverlayAppState extends State<OverlayApp> {
     return OverflowBox(
       minWidth: 300,
       maxWidth: 300,
-      minHeight: 380,
-      maxHeight: 380,
+      minHeight: 360,
+      maxHeight: 360,
       alignment: Alignment.center,
       child: Container(
         width: 300,
-        height: 380,
+        height: 360,
         decoration: BoxDecoration(
           color: const Color(0xFF000000),
           borderRadius: BorderRadius.circular(24),
@@ -683,9 +694,6 @@ class _OverlayAppState extends State<OverlayApp> {
               ),
             ),
 
-            // Segmented Mode Selector: Chat vs Agent
-            _buildModeSelector(),
-
             // Message Log List
             Expanded(
               child: Container(
@@ -738,17 +746,15 @@ class _OverlayAppState extends State<OverlayApp> {
                                 fontSize: 12,
                                 color: Colors.white,
                               ),
-                              decoration: InputDecoration(
-                                hintText: _mode == 'agent'
-                                    ? 'Type an action command...'
-                                    : 'Ask anything...',
-                                hintStyle: const TextStyle(
+                              decoration: const InputDecoration(
+                                hintText: 'Type a prompt or task...',
+                                hintStyle: TextStyle(
                                   fontSize: 11.5,
                                   color: Color(0xFF8E8E93),
                                 ),
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
+                                contentPadding: EdgeInsets.symmetric(
                                   vertical: 6,
                                 ),
                               ),
@@ -816,91 +822,5 @@ class _OverlayAppState extends State<OverlayApp> {
       ),
     );
   }
-
-  Widget _buildModeSelector() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0C0C0C),
-        border: Border(
-          bottom: BorderSide(color: Color(0xFF222222), width: 1),
-        ),
-      ),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.all(2.5),
-          decoration: BoxDecoration(
-            color: const Color(0xFF18181A),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFF2C2C2E), width: 1),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildModeButton(
-                'chat',
-                'Chat',
-                Icons.chat_bubble_outline_rounded,
-              ),
-              _buildModeButton(
-                'agent',
-                'Agent',
-                Icons.smart_toy_outlined,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeButton(String modeId, String label, IconData icon) {
-    final isSelected = _mode == modeId;
-    return GestureDetector(
-      onTap: () {
-        if (_mode != modeId) {
-          setState(() {
-            _mode = modeId;
-          });
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: isSelected ? Colors.white : Colors.transparent,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.15),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 12,
-              color: isSelected ? Colors.black : const Color(0xFF8E8E93),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.black : const Color(0xFF8E8E93),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
+

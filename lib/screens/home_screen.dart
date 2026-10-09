@@ -26,6 +26,8 @@ import '../main.dart';
 import '../config/feature_flags.dart';
 import '../services/floating_bubble_service.dart';
 import '../services/agent_orchestrator.dart';
+import '../services/task_executor.dart';
+import '../services/app_launcher_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,9 +48,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   bool _isListening = false;
-
-  // Custom switch state: 'chat' or 'agent'
-  String _mode = 'chat';
 
   // Chat Session state tracking
   String _sessionId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -203,64 +202,96 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _scrollToBottom();
     await _saveSession();
 
-    // Add empty placeholder assistant message for streaming
-    final assistantMessage = ChatMessage(role: 'assistant', content: '');
-    setState(() {
-      _messages.add(assistantMessage);
-    });
-    final assistantIndex = _messages.length - 1;
+    final intent = AgentOrchestrator.classifyIntent(outgoingPrompt);
 
-    try {
-      final isActionIntent = AgentOrchestrator.isActionIntent(outgoingPrompt);
-      final isAgent = _mode == 'agent' && isActionIntent;
-      final stream = _aiService
-          .sendMessageStream(
-            outgoingPrompt,
-            isAgentMode: isAgent,
-            imageBase64: imageBase64,
-          )
-          .timeout(
-            const Duration(seconds: 90),
-            onTimeout: (sink) {
-              sink.addError(
-                TimeoutException(
-                  'The model did not return visible text within 90 seconds.',
-                ),
+    if (intent == UserIntent.chat) {
+      // ----------------------------------------------------
+      // CONVERSATIONAL / INFORMATIONAL INTENT:
+      // Directly invoke LLM text generation (sendMessageStream).
+      // Render normal response bubble. Do not touch accessibility,
+      // do not scan or touch other apps.
+      // ----------------------------------------------------
+      final assistantMessage = ChatMessage(role: 'assistant', content: '');
+      setState(() {
+        _messages.add(assistantMessage);
+      });
+      final assistantIndex = _messages.length - 1;
+
+      try {
+        final stream = _aiService
+            .sendMessageStream(
+              outgoingPrompt,
+              isAgentMode: false,
+              imageBase64: imageBase64,
+            )
+            .timeout(
+              const Duration(seconds: 90),
+              onTimeout: (sink) {
+                sink.addError(
+                  TimeoutException(
+                    'The model did not return visible text within 90 seconds.',
+                  ),
+                );
+                sink.close();
+              },
+            );
+        String accumulated = '';
+
+        await for (final chunk in stream) {
+          accumulated += chunk;
+          if (mounted) {
+            setState(() {
+              _messages[assistantIndex] = ChatMessage(
+                role: 'assistant',
+                content: accumulated,
               );
-              sink.close();
-            },
-          );
-      String accumulated = '';
-
-      await for (final chunk in stream) {
-        accumulated += chunk;
+            });
+            _scrollToBottom();
+          }
+        }
+        await _saveSession();
+        _voiceService.speak(accumulated);
+      } catch (e) {
         if (mounted) {
           setState(() {
-            _messages[assistantIndex] = ChatMessage(
-              role: 'assistant',
-              content: accumulated,
+            if (_messages.isNotEmpty && _messages.length > assistantIndex) {
+              _messages.removeAt(assistantIndex);
+            }
+            _messages.add(
+              ChatMessage(
+                role: 'assistant',
+                content:
+                    'Error: ${e.toString().replaceFirst('Exception: ', '')}',
+              ),
             );
           });
           _scrollToBottom();
         }
       }
+    } else {
+      // ----------------------------------------------------
+      // ACTION / DEVICE CONTROL INTENT:
+      // Route to TaskExecutor.executeTask(text).
+      // Show clean inline execution badge ([EXECUTING TASK])
+      // and perform device actions seamlessly.
+      // ----------------------------------------------------
+      final badgeMessage = ChatMessage(
+        role: 'assistant',
+        content: '[EXECUTING TASK] Starting: ${text.trim()}',
+      );
+      setState(() {
+        _messages.add(badgeMessage);
+      });
+      _scrollToBottom();
       await _saveSession();
+      await _showTaskProgressOverlay('Starting: ${text.trim()}');
 
-      // Check if it's an action (only executed if in Agent mode and action intent was detected)
-      final action = isAgent ? _aiService.parseAction(accumulated) : null;
-
-      if (action != null) {
-        // If it's an action, we remove the raw JSON message from display
-        setState(() {
-          _messages.removeAt(assistantIndex);
-        });
-
-        await _showTaskProgressOverlay('Starting: ${text.trim()}');
-
-        // Execute the action (pass aiService for multi-step tasks)
-        final result = await _actionHandler.execute(
-          action,
+      try {
+        final executor = TaskExecutor(
           aiService: _aiService,
+          screenService: _actionHandler.screenAutomation,
+          appLauncher: AppLauncherService(),
+          shizukuService: _actionHandler.shizuku,
           onProgress: (msg) {
             developer.log('Task progress: $msg', name: 'PrivateAgent');
             _sendOverlayEvent('OVERLAY_PROGRESS', msg);
@@ -275,54 +306,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
         );
 
-        setState(() {
-          _messages.add(
-            ChatMessage(
-              role: 'assistant',
-              content: result.success
-                  ? (action.response.isNotEmpty
-                        ? action.response
-                        : (result.details ?? 'Done.'))
-                  : (action.response.isNotEmpty
-                        ? '${action.response}\n\n⚠️ ${result.details}'
-                        : '⚠️ ${result.details}'),
-              actionResult: result,
-            ),
-          );
-        });
-        _sendOverlayEvent(
-          'OVERLAY_TASK_FINISHED',
-          result.success
-              ? (result.details ?? 'Task complete.')
-              : 'Task failed: ${result.details ?? 'Unknown error'}',
-        );
-        if (action.action != 'execute_task') {
-          await _notificationService.showTaskCompleteNotification(
-            result.success ? 'Task Completed' : 'Task Failed',
-            result.details ??
-                (result.success
-                    ? 'Agent finished its goal.'
-                    : 'Agent could not complete the task.'),
-          );
+        final resultText = await executor.executeTask(text.trim());
+
+        if (mounted) {
+          setState(() {
+            _messages.add(
+              ChatMessage(
+                role: 'assistant',
+                content: resultText,
+              ),
+            );
+          });
+          _scrollToBottom();
         }
+        _sendOverlayEvent('OVERLAY_TASK_FINISHED', resultText);
+        await _notificationService.showTaskCompleteNotification(
+          'Task Completed',
+          resultText,
+        );
         await _saveSession();
-      } else {
-        // Plain text response, we already rendered it, just speak it
-        _voiceService.speak(accumulated);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          if (_messages.isNotEmpty && _messages.length > assistantIndex) {
-            _messages.removeAt(assistantIndex);
-          }
-          _messages.add(
-            ChatMessage(
-              role: 'assistant',
-              content: 'Error: ${e.toString().replaceFirst('Exception: ', '')}',
-            ),
-          );
-        });
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _messages.add(
+              ChatMessage(
+                role: 'assistant',
+                content:
+                    'Task failed: ${e.toString().replaceFirst('Exception: ', '')}',
+              ),
+            );
+          });
+          _scrollToBottom();
+        }
       }
     } finally {
       if (mounted) {
@@ -659,21 +674,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           text: TextSpan(
             style: TextStyle(
               fontSize: 20,
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
+              color: isDark ? Colors.white : const Color(0xFF000000),
             ),
             children: [
               TextSpan(
                 text: 'Private',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: isDark ? Colors.white : const Color(0xFF000000),
                   letterSpacing: -0.5,
                 ),
               ),
-              const TextSpan(
+              TextSpan(
                 text: 'Agent',
                 style: TextStyle(
                   fontWeight: FontWeight.w400,
+                  color: isDark
+                      ? const Color(0xFF888888)
+                      : const Color(0xFF666666),
                   letterSpacing: -0.5,
                 ),
               ),
@@ -686,33 +704,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu_rounded),
             tooltip: 'Menu',
+            color: isDark ? Colors.white : Colors.black,
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
         actions: [
-          if (FeatureFlags.floatingOverlayEnabled)
-            IconButton(
-              icon: Icon(
-                _isOverlayActive
-                    ? Icons.bubble_chart_rounded
-                    : Icons.bubble_chart_outlined,
-                color: _isOverlayActive
-                    ? (isDark ? Colors.white : Colors.black)
-                    : (isDark ? Colors.white70 : Colors.black54),
-              ),
-              tooltip: _isOverlayActive
-                  ? 'Dismiss Floating Bubble'
-                  : 'Launch Floating Bubble',
-              onPressed: _toggleFloatingOverlay,
-            ),
           IconButton(
-            icon: const Icon(Icons.add_comment_outlined),
-            tooltip: 'New chat',
+            icon: const Icon(Icons.restart_alt_rounded),
+            tooltip: 'Reset Session',
+            color: isDark ? Colors.white : Colors.black,
             onPressed: _isLoading ? null : _startNewChat,
           ),
           // Settings Action
           IconButton(
             icon: const Icon(Icons.settings_rounded),
+            tooltip: 'Settings',
+            color: isDark ? Colors.white : Colors.black,
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -746,8 +753,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           Column(
             children: [
-              // Pill selector switcher
-              _buildModeSelector(isDark),
 
               // API key warning banner
               if (!_aiService.isConfigured)
@@ -1179,105 +1184,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildModeSelector(bool isDark) {
-    final activeBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFE2E8F0);
-
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 12),
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: activeBg,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildModeButton(
-              'chat',
-              'Chat',
-              Icons.chat_bubble_outline_rounded,
-              isDark,
-            ),
-            _buildModeButton(
-              'agent',
-              'Agent',
-              Icons.smart_toy_outlined,
-              isDark,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeButton(
-    String modeId,
-    String label,
-    IconData icon,
-    bool isDark,
-  ) {
-    final isSelected = _mode == modeId;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _mode = modeId;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
-          color: isSelected
-              ? (isDark ? Colors.white : Theme.of(context).colorScheme.primary)
-              : Colors.transparent,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.12)
-                        : Theme.of(context).colorScheme.primary.withOpacity(0.20),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color: isSelected
-                  ? (isDark ? Colors.black : Colors.white)
-                  : (isDark
-                        ? const Color(0xFF8E8E93)
-                        : const Color(0xFF475569)),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected
-                    ? (isDark ? Colors.black : Colors.white)
-                    : (isDark
-                          ? const Color(0xFF8E8E93)
-                          : const Color(0xFF475569)),
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildEmptyState(bool isDark) {
     final time = DateTime.now();
     String timeGreeting = 'Hello';
@@ -1291,19 +1197,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       timeGreeting = 'Hello.';
     }
 
-    final suggestions = _mode == 'chat'
-        ? [
-            'Write a professional email',
-            'Explain quantum computing simply',
-            'Brainstorm mobile app ideas',
-            'Write a poem about robots',
-          ]
-        : [
-            'Open YouTube and search for cats',
-            'Call Mom',
-            'Set volume to 80%',
-            'What\'s on my screen?',
-          ];
+    final suggestions = [
+      'Open YouTube and search for cats',
+      'Explain quantum computing simply',
+      'Set volume to 80%',
+      'Write a professional email',
+    ];
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),

@@ -62,25 +62,27 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.11-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.12-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.11-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.11' }}
-          name: "PrivateAgent Pro v1.0.11 - Floating Bubble Intent Routing & Native Lifecycle Resilience"
+            build/app/outputs/flutter-apk/PrivateAgent-v1.0.12-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.12' }}
+          name: "PrivateAgent Pro v1.0.12 - Unified Zero-Toggle AI Interface & Single-Stream Intent Routing"
           body: |
-            ### PrivateAgent Pro v1.0.11
-            - **Strict Intent Routing (`AgentOrchestrator`)**: Strict intent classifier separating casual conversation (greetings, queries, coding) from device automation commands. Conversational inputs route directly to pure LLM streaming chat without touching the accessibility bridge or opening random apps.
-            - **Floating Overlay Mode Switch**: Segmented OLED `[Chat]` / `[Agent]` toggle in the floating bubble matching the main interface with responsive hint placeholders.
-            - **Service Lifecycle Resilience**: Native `FloatingOverlayService` implements `onStartCommand()` returning `START_NOT_STICKY`, immediate `startForeground()` on channel `floating_bubble_service` (Importance LOW) before WindowManager calls, and overlay permission pre-checks.
-            - **Lag-Free Drag & Edge Snapping**: Throttled WindowManager layout updates to 16ms (60fps) during touch move events to prevent IPC saturation, with smooth `ValueAnimator` edge snapping on touch release.
+            ### PrivateAgent Pro v1.0.12
+            - **Unified AI Interface (Zero-Toggle)**: Completely eliminated manual `[Chat | Agent]` mode toggle pills from both the main app (`HomeScreen`) and Floating Bubble (`OverlayApp`).
+            - **Transparent Single-Stream Intent Routing**: All user inputs go through automatic intent classification via `AgentOrchestrator`:
+              - Conversational / informational prompts (greetings, general Q&A, coding, brainstorming) stream directly from the LLM without touching device accessibility or opening apps.
+              - Device action prompts (e.g., "open youtube", "set volume to 80%", "read screen", "send message") route directly to `TaskExecutor` with clean inline execution badges (`[EXECUTING TASK]`) and native system controls.
+            - **Universal Input Dock**: Seamless "Type a prompt or task..." universal placeholder across both main and overlay interfaces.
+            - **Clean Minimal OLED Monochrome UI**: Top app bar streamlined to Title, Session Reset, and Settings icon in pure high-contrast OLED monochrome styling.
 
             #### Direct Download
-            Download **PrivateAgent-v1.0.11-pro.apk** below to install or update.
+            Download **PrivateAgent-v1.0.12-pro.apk** below to install or update.
           draft: false
           prerelease: false
           make_latest: true
