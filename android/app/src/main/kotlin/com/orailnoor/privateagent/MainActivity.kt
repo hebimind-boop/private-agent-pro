@@ -2,10 +2,6 @@ package com.orailnoor.privateagent
 
 import android.content.Intent
 import android.provider.Settings
-import android.content.pm.PackageInstaller
-import android.app.PendingIntent
-import java.io.File
-import java.io.FileInputStream
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -247,108 +243,6 @@ class MainActivity : FlutterActivity() {
                             }
                         }
 
-                        "checkInstallPermission" -> {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                result.success(context.packageManager.canRequestPackageInstalls())
-                            } else {
-                                result.success(true)
-                            }
-                        }
-
-                        "requestInstallPermission" -> {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                val intent = Intent(
-                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                    Uri.parse("package:${context.packageName}")
-                                ).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                                result.success(true)
-                            } else {
-                                result.success(true)
-                            }
-                        }
-
-                        "installPackageSession" -> {
-                            val apkPath = call.argument<String>("apkPath") ?: ""
-                            val file = File(apkPath)
-                            if (!file.exists()) {
-                                result.error("FILE_NOT_FOUND", "APK file does not exist at $apkPath", null)
-                            } else {
-                                try {
-                                    val packageInstaller = context.packageManager.packageInstaller
-                                    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                        params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-                                    }
-                                    val sessionId = packageInstaller.createSession(params)
-                                    val session = packageInstaller.openSession(sessionId)
-
-                                    val inputStream = FileInputStream(file)
-                                    val outputStream = session.openWrite("private_agent_update", 0, file.length())
-                                    inputStream.copyTo(outputStream)
-                                    session.fsync(outputStream)
-                                    inputStream.close()
-                                    outputStream.close()
-
-                                    val intent = Intent(context, MainActivity::class.java).apply {
-                                        action = "com.orailnoor.privateagent.INSTALL_COMPLETE"
-                                    }
-                                    val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-                                    } else {
-                                        PendingIntent.FLAG_UPDATE_CURRENT
-                                    }
-                                    val pendingIntent = PendingIntent.getActivity(
-                                        context,
-                                        sessionId,
-                                        intent,
-                                        flags
-                                    )
-                                    session.commit(pendingIntent.intentSender)
-                                    session.close()
-                                    result.success(true)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("PrivateAgentKotlin", "installPackageSession error: ${e.message}", e)
-                                    result.error("SESSION_INSTALL_ERROR", e.message, null)
-                                }
-                            }
-                        }
-
-                        "installApk" -> {
-                            val filePath = call.argument<String>("filePath") ?: ""
-                            val file = java.io.File(filePath)
-                            if (!file.exists()) {
-                                result.error("FILE_NOT_FOUND", "APK file does not exist at $filePath", null)
-                            } else {
-                                try {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-                                        val manageIntent = Intent(
-                                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                            Uri.parse("package:${context.packageName}")
-                                        ).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        context.startActivity(manageIntent)
-                                    }
-                                    val contentUri = androidx.core.content.FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file
-                                    )
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(contentUri, "application/vnd.android.package-archive")
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(intent)
-                                    result.success(true)
-                                } catch (e: Exception) {
-                                    result.error("INSTALL_ERROR", e.message, null)
-                                }
-                            }
-                        }
 
                         else -> result.notImplemented()
                     }

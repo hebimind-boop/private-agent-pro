@@ -1,10 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
-import 'shizuku_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AppUpdateInfo {
   final String version;
@@ -29,7 +27,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.8';
+  static const String currentVersion = '1.0.9';
   static const String repoOwner = 'hebimind-boop';
   static const String repoName = 'private-agent-pro';
   static const String latestReleaseUrl =
@@ -45,7 +43,7 @@ class UpdateService {
     return currentVersion;
   }
 
-  /// Clean version string (e.g., 'v1.0.3-pro' -> '1.0.3')
+  /// Clean version string (e.g., 'v1.0.9-pro' -> '1.0.9')
   static String _cleanVersion(String v) {
     String clean = v.trim();
     if (clean.toLowerCase().startsWith('v')) {
@@ -107,7 +105,7 @@ class UpdateService {
       final publishedAt = DateTime.tryParse(publishedAtStr) ?? DateTime.now();
 
       // Find exact release APK asset:
-      // Must prioritize PrivateAgent-*pro*.apk or PrivateAgent-*.apk (complete ~58.8 MB APK)
+      // Prioritize PrivateAgent-*pro*.apk or PrivateAgent-*.apk
       // and explicitly ignore split architecture APKs (arm64-v8a, armeabi-v7a, x86_64).
       String downloadUrl = '';
       int apkSize = 0;
@@ -284,287 +282,16 @@ class UpdateService {
   static void showUpdateDialog(BuildContext context, AppUpdateInfo info) {
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (dialogCtx) => _UpdateDialog(info: info),
     );
   }
-
-  /// Resolves the optimal destination for the APK:
-  /// Primary: Public Downloads Directory (/storage/emulated/0/Download/PrivateAgent-v$version-pro.apk)
-  /// Fallbacks: getExternalStorageDirectory(), external cache, or temporary directory.
-  static Future<File> getApkDestinationFile(String version) async {
-    final cleanVer = _cleanVersion(version);
-    final fileName = 'PrivateAgent-v$cleanVer-pro.apk';
-
-    // 1. Primary: Real public Android Downloads directory (/storage/emulated/0/Download)
-    try {
-      final downloadDir = Directory('/storage/emulated/0/Download');
-      if (!await downloadDir.exists()) {
-        await downloadDir.create(recursive: true);
-      }
-      final targetFile = File('${downloadDir.path}/$fileName');
-      // Test write capability to ensure file can be written to public storage
-      final testFile = File('${downloadDir.path}/.test_write_${DateTime.now().millisecondsSinceEpoch}');
-      await testFile.writeAsString('ok');
-      await testFile.delete();
-      debugPrint('Using public Downloads directory for update: ${targetFile.path}');
-      return targetFile;
-    } catch (e) {
-      debugPrint('Public /storage/emulated/0/Download write restricted: $e');
-    }
-
-    // 2. Fallback: External Storage Directory (app-specific external folder)
-    try {
-      final extDir = await getExternalStorageDirectory();
-      if (extDir != null) {
-        final downloadSubdir = Directory('${extDir.path}/Download');
-        if (!await downloadSubdir.exists()) {
-          await downloadSubdir.create(recursive: true);
-        }
-        final targetFile = File('${downloadSubdir.path}/$fileName');
-        debugPrint('Using external storage fallback for update: ${targetFile.path}');
-        return targetFile;
-      }
-    } catch (e) {
-      debugPrint('External storage fallback error: $e');
-    }
-
-    // 3. Fallback: External Cache
-    try {
-      final extCacheDirs = await getExternalCacheDirectories();
-      if (extCacheDirs != null && extCacheDirs.isNotEmpty) {
-        final targetFile = File('${extCacheDirs.first.path}/$fileName');
-        debugPrint('Using external cache fallback for update: ${targetFile.path}');
-        return targetFile;
-      }
-    } catch (_) {}
-
-    // 4. Final Fallback: Temporary directory
-    final tempDir = await getTemporaryDirectory();
-    final targetFile = File('${tempDir.path}/$fileName');
-    debugPrint('Using temporary directory fallback for update: ${targetFile.path}');
-    return targetFile;
-  }
-
-  /// Resolves direct stream response by following 301/302 redirects up to [maxHops]
-  static Future<http.StreamedResponse> fetchDownloadStream(
-    String initialUrl, {
-    int maxHops = 5,
-  }) async {
-    final client = http.Client();
-    var currentUri = Uri.parse(initialUrl);
-    int hops = 0;
-
-    while (hops < maxHops) {
-      final request = http.Request('GET', currentUri);
-      request.followRedirects = false; // Inspect each hop manually
-      request.headers['User-Agent'] = 'PrivateAgent-App';
-      request.headers['Accept'] =
-          'application/octet-stream, application/vnd.android.package-archive, */*';
-
-      final response = await client.send(request);
-
-      if (response.statusCode == 301 ||
-          response.statusCode == 302 ||
-          response.statusCode == 303 ||
-          response.statusCode == 307 ||
-          response.statusCode == 308) {
-        final location = response.headers['location'];
-        if (location != null && location.isNotEmpty) {
-          final nextUri = currentUri.resolve(location);
-          debugPrint('Redirect hop ${hops + 1}: $currentUri -> $nextUri');
-          currentUri = nextUri;
-          hops++;
-          await response.stream.drain();
-          continue;
-        }
-      }
-
-      if (response.statusCode != 200) {
-        await response.stream.drain();
-        client.close();
-        throw Exception('Download failed with HTTP ${response.statusCode}');
-      }
-
-      return response;
-    }
-
-    client.close();
-    throw Exception('Too many redirects ($hops hops)');
-  }
-
-  /// Telegram-Style Dual-Mode Installation Pipeline
-  /// Mode 1: Privileged Shizuku Install (100% Silent Zero-Click with auto-restart)
-  /// Mode 2: Standard PackageInstaller via FileProvider (with unknown apps permission check)
-  static Future<bool> installApkFile(
-    File file,
-    String version, {
-    Function(String)? onStatusUpdate,
-  }) async {
-    // Mode 1: 100% Silent Autonomous Install via Shizuku (Zero-Click)
-    try {
-      final shizuku = ShizukuService();
-      final hasShizuku = await shizuku.checkAvailability();
-      if (hasShizuku) {
-        onStatusUpdate?.call('Installing silently via Shizuku...');
-        debugPrint('Shizuku is active. Executing zero-click privileged install: ${file.path}');
-
-        final installOutput = await shizuku.runCommand('pm install -r -d "${file.path}"');
-        debugPrint('Shizuku pm install output: $installOutput');
-
-        if (installOutput.toLowerCase().contains('success')) {
-          onStatusUpdate?.call('Installed! Restarting PrivateAgent...');
-          await Future.delayed(const Duration(milliseconds: 500));
-          // 100% silent relaunch with zero system dialogs
-          await shizuku.runCommand(
-            'am start -n com.orailnoor.privateagent/com.orailnoor.privateagent.MainActivity',
-          );
-          return true;
-        } else {
-          debugPrint('Shizuku install failed: $installOutput');
-        }
-      }
-    } catch (e) {
-      debugPrint('Shizuku privileged install error: $e');
-    }
-
-    // Mode 2: Telegram-Spec Native PackageInstaller Session (Zero-Click on Android 12+)
-    onStatusUpdate?.call('Starting PackageInstaller session...');
-    try {
-      const channel = MethodChannel('com.privateagent/accessibility');
-
-      // Check if "Install Unknown Apps" permission is needed (Android 8.0+)
-      final canInstall = await channel.invokeMethod<bool>('checkInstallPermission');
-      if (canInstall != true) {
-        onStatusUpdate?.call('Grant "Install Unknown Apps" permission...');
-        await channel.invokeMethod('requestInstallPermission');
-        await Future.delayed(const Duration(seconds: 2));
-      }
-
-      debugPrint('Triggering native installPackageSession MethodChannel: ${file.path}');
-      final sessionResult = await channel.invokeMethod<bool>('installPackageSession', {
-        'apkPath': file.path,
-      });
-      if (sessionResult == true) {
-        onStatusUpdate?.call('Installing update in background...');
-        return true;
-      }
-    } catch (e) {
-      debugPrint('Native installPackageSession failed: $e, falling back to FileProvider');
-    }
-
-    // Mode 3: Standard PackageInstaller via FileProvider Fallback
-    onStatusUpdate?.call('Launching package installer...');
-    try {
-      const channel = MethodChannel('com.privateagent/accessibility');
-      debugPrint('Triggering native FileProvider installer MethodChannel...');
-      final result = await channel.invokeMethod<bool>('installApk', {
-        'filePath': file.path,
-      });
-      if (result == true) {
-        return true;
-      }
-    } catch (e) {
-      debugPrint('Native installApk failed: $e');
-    }
-
-    onStatusUpdate?.call('Installation could not be started.');
-    return false;
-  }
 }
 
-class _UpdateDialog extends StatefulWidget {
+class _UpdateDialog extends StatelessWidget {
   final AppUpdateInfo info;
 
   const _UpdateDialog({required this.info});
-
-  @override
-  State<_UpdateDialog> createState() => _UpdateDialogState();
-}
-
-class _UpdateDialogState extends State<_UpdateDialog> {
-  bool _isDownloading = false;
-  double _downloadProgress = 0.0;
-  String _downloadStatus = '';
-
-  Future<void> _startDownloadAndInstall() async {
-    setState(() {
-      _isDownloading = true;
-      _downloadProgress = 0.0;
-      _downloadStatus = 'Connecting...';
-    });
-
-    try {
-      final response = await UpdateService.fetchDownloadStream(widget.info.apkDownloadUrl);
-
-      int contentLength = response.contentLength ?? 0;
-      if (contentLength <= 0) {
-        contentLength = int.tryParse(response.headers['content-length'] ?? '') ?? 0;
-      }
-      if (contentLength <= 0) {
-        contentLength = widget.info.apkSizeBytes;
-      }
-
-      final file = await UpdateService.getApkDestinationFile(widget.info.version);
-      if (await file.exists()) {
-        try {
-          await file.delete();
-        } catch (_) {}
-      }
-      final sink = file.openWrite();
-
-      int receivedBytes = 0;
-      await response.stream.listen((chunk) {
-        sink.add(chunk);
-        receivedBytes += chunk.length;
-        if (contentLength > 0 && mounted) {
-          setState(() {
-            _downloadProgress = (receivedBytes / contentLength).clamp(0.0, 1.0);
-            final mbReceived = (receivedBytes / (1024 * 1024)).toStringAsFixed(1);
-            final mbTotal = (contentLength / (1024 * 1024)).toStringAsFixed(1);
-            _downloadStatus =
-                '$mbReceived MB / $mbTotal MB (${(_downloadProgress * 100).toInt()}%)';
-          });
-        }
-      }).asFuture();
-
-      // Ensure 0 bytes remain buffered: flush and close completely before triggering installation
-      await sink.flush();
-      await sink.close();
-
-      final writtenBytes = await file.length();
-      debugPrint('APK download completed: ${file.path} ($writtenBytes bytes written)');
-
-      if (mounted) {
-        setState(() {
-          _downloadStatus = 'Installing update...';
-        });
-      }
-
-      await UpdateService.installApkFile(
-        file,
-        widget.info.version,
-        onStatusUpdate: (status) {
-          if (mounted) {
-            setState(() {
-              _downloadStatus = status;
-            });
-          }
-        },
-      );
-
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isDownloading = false;
-          _downloadStatus = 'Download failed: $e';
-        });
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -623,7 +350,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         ),
                       ),
                       Text(
-                        'v${widget.info.currentVersion} → v${widget.info.version}',
+                        'v${info.currentVersion} → v${info.version}',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -639,7 +366,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
             // Release title
             Text(
-              widget.info.releaseName,
+              info.releaseName,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -663,7 +390,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               ),
               child: SingleChildScrollView(
                 child: Text(
-                  widget.info.releaseNotes,
+                  info.releaseNotes,
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.4,
@@ -672,54 +399,32 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-
-            // Download Progress indicator (if active)
-            if (_isDownloading) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: _downloadProgress > 0 ? _downloadProgress : null,
-                  backgroundColor: isDark ? const Color(0xFF2C2C2E) : Colors.grey[300],
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    isDark ? Colors.white : Colors.black87,
-                  ),
-                  minHeight: 6,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: Text(
-                  _downloadStatus,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
+            const SizedBox(height: 20),
 
             // Action Buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (!_isDownloading)
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(
-                      'Later',
-                      style: TextStyle(
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Later',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
                     ),
                   ),
+                ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: _isDownloading ? null : _startDownloadAndInstall,
+                  onPressed: () async {
+                    final uri = Uri.parse(info.apkDownloadUrl);
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isDark ? Colors.white : Colors.black87,
                     foregroundColor: isDark ? Colors.black : Colors.white,
@@ -729,9 +434,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     elevation: 0,
                   ),
-                  child: Text(
-                    _isDownloading ? 'Downloading...' : 'Update Now',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  child: const Text(
+                    'Update Now',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                 ),
               ],
