@@ -835,67 +835,74 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
 
           // 9. Software Updates Card
-          _buildSettingsCard(
-            icon: Icons.system_update_rounded,
-            title: 'Software Updates',
-            subtitle: 'Current Version: v${UpdateService.currentVersion}',
-            isDark: isDark,
-            children: [
-              Row(
+          FutureBuilder<String>(
+            future: UpdateService.getInstalledVersion(),
+            initialData: UpdateService.currentVersion,
+            builder: (context, snapshot) {
+              final runtimeVer = snapshot.data ?? UpdateService.currentVersion;
+              return _buildSettingsCard(
+                icon: Icons.system_update_rounded,
+                title: 'Software Updates',
+                subtitle: 'Current Version: v$runtimeVer',
+                isDark: isDark,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'In-App Auto-Updater',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'In-App Auto-Updater',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Check GitHub releases for the latest APK',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Check GitHub releases for the latest APK',
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => UpdateService.checkManually(context),
+                        icon: Icon(
+                          Icons.refresh_rounded,
+                          size: 16,
+                          color: isDark ? Colors.black : Colors.white,
+                        ),
+                        label: Text(
+                          'Check Now',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.black : Colors.white,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () => UpdateService.checkManually(context),
-                    icon: Icon(
-                      Icons.refresh_rounded,
-                      size: 16,
-                      color: isDark ? Colors.black : Colors.white,
-                    ),
-                    label: Text(
-                      'Check Now',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.black : Colors.white,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDark ? Colors.white : Colors.black87,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          elevation: 0,
+                        ),
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark ? Colors.white : Colors.black87,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      elevation: 0,
-                    ),
+                    ],
                   ),
                 ],
-              ),
-            ],
+              );
+            },
           ),
 
           // 10. About / Links Card
@@ -910,9 +917,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 title: const Text('PrivateAgent Pro'),
                 subtitle: FutureBuilder<String>(
                   future: UpdateService.getInstalledVersion(),
-                  initialData: '1.0.6',
+                  initialData: UpdateService.currentVersion,
                   builder: (context, snapshot) =>
-                      Text('v${snapshot.data ?? '1.0.6'}'),
+                      Text('v${snapshot.data ?? UpdateService.currentVersion}'),
                 ),
                 leading: const Icon(Icons.info_outline_rounded),
               ),

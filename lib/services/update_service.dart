@@ -8,6 +8,7 @@ import 'shizuku_service.dart';
 
 class AppUpdateInfo {
   final String version;
+  final String currentVersion;
   final String rawTag;
   final String releaseName;
   final String releaseNotes;
@@ -17,6 +18,7 @@ class AppUpdateInfo {
 
   AppUpdateInfo({
     required this.version,
+    required this.currentVersion,
     required this.rawTag,
     required this.releaseName,
     required this.releaseNotes,
@@ -27,7 +29,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.5';
+  static const String currentVersion = '1.0.7';
   static const String repoOwner = 'hebimind-boop';
   static const String repoName = 'private-agent-pro';
   static const String latestReleaseUrl =
@@ -166,6 +168,7 @@ class UpdateService {
       if (_isVersionNewer(tagName, localVersion)) {
         return AppUpdateInfo(
           version: remoteVersion,
+          currentVersion: localVersion,
           rawTag: tagName,
           releaseName: releaseName,
           releaseNotes: releaseNotes,
@@ -227,6 +230,7 @@ class UpdateService {
     );
 
     try {
+      final localVersion = await getInstalledVersion();
       final updateInfo = await fetchLatestRelease();
       if (!context.mounted) return;
 
@@ -236,7 +240,7 @@ class UpdateService {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'You are using the latest version (v$currentVersion).',
+              'You are using the latest version (v$localVersion).',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
@@ -424,8 +428,8 @@ class UpdateService {
       debugPrint('Shizuku privileged install error: $e');
     }
 
-    // Mode 2: Standard PackageInstaller via FileProvider Fallback
-    onStatusUpdate?.call('Preparing installer...');
+    // Mode 2: Telegram-Spec Native PackageInstaller Session (Zero-Click on Android 12+)
+    onStatusUpdate?.call('Starting PackageInstaller session...');
     try {
       const channel = MethodChannel('com.privateagent/accessibility');
 
@@ -434,12 +438,25 @@ class UpdateService {
       if (canInstall != true) {
         onStatusUpdate?.call('Grant "Install Unknown Apps" permission...');
         await channel.invokeMethod('requestInstallPermission');
-        // Wait for user to return from settings
         await Future.delayed(const Duration(seconds: 2));
       }
 
-      // Launch FileProvider-based native installer
-      onStatusUpdate?.call('Launching package installer...');
+      debugPrint('Triggering native installPackageSession MethodChannel: ${file.path}');
+      final sessionResult = await channel.invokeMethod<bool>('installPackageSession', {
+        'apkPath': file.path,
+      });
+      if (sessionResult == true) {
+        onStatusUpdate?.call('Installing update in background...');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Native installPackageSession failed: $e, falling back to FileProvider');
+    }
+
+    // Mode 3: Standard PackageInstaller via FileProvider Fallback
+    onStatusUpdate?.call('Launching package installer...');
+    try {
+      const channel = MethodChannel('com.privateagent/accessibility');
       debugPrint('Triggering native FileProvider installer MethodChannel...');
       final result = await channel.invokeMethod<bool>('installApk', {
         'filePath': file.path,
@@ -606,7 +623,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         ),
                       ),
                       Text(
-                        'v${UpdateService.currentVersion} → v${widget.info.version}',
+                        'v${widget.info.currentVersion} → v${widget.info.version}',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
