@@ -24,6 +24,7 @@ import 'artifacts_screen.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../main.dart';
 import '../config/feature_flags.dart';
+import '../services/floating_bubble_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -475,37 +476,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _checkOverlayActiveStatus() async {
     if (!FeatureFlags.floatingOverlayEnabled) return;
     try {
-      final active = await FlutterOverlayWindow.isActive();
-      if (mounted) setState(() => _isOverlayActive = active);
+      final enabled = await FloatingBubbleService.isEnabled();
+      if (mounted) setState(() => _isOverlayActive = enabled);
     } catch (_) {}
   }
 
   Future<void> _toggleFloatingOverlay() async {
     if (!FeatureFlags.floatingOverlayEnabled) return;
 
-    final active = await FlutterOverlayWindow.isActive();
-    if (active) {
-      await FlutterOverlayWindow.closeOverlay();
+    if (_isOverlayActive) {
+      await FloatingBubbleService.stopBubble();
       if (mounted) {
         setState(() => _isOverlayActive = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Floating bubble dismissed'),
+            content: Text('Floating Assistant Bubble dismissed'),
             duration: Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('floating_bubble_enabled', false);
       return;
     }
 
-    bool isGranted = await FlutterOverlayWindow.isPermissionGranted();
-    if (!isGranted) {
-      await FlutterOverlayWindow.requestPermission();
-      isGranted = await FlutterOverlayWindow.isPermissionGranted();
-      if (!isGranted) {
+    final hasPerm = await FloatingBubbleService.isPermissionGranted();
+    if (!hasPerm) {
+      await FloatingBubbleService.requestPermission();
+      final afterPerm = await FloatingBubbleService.isPermissionGranted();
+      if (!afterPerm) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -521,27 +519,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
 
-    await FlutterOverlayWindow.showOverlay(
-      enableDrag: true,
-      overlayTitle: 'PrivateAgent',
-      overlayContent: _isLoading ? 'Performing task...' : 'Floating Assistant',
-      flag: OverlayFlag.focusPointer,
-      alignment: OverlayAlignment.centerRight,
-      visibility: NotificationVisibility.visibilitySecret,
-      positionGravity: PositionGravity.auto,
-      startPosition: const OverlayPosition(0, 200),
-      width: 56,
-      height: 56,
-    );
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('floating_bubble_enabled', true);
-
+    await FloatingBubbleService.startBubble();
     if (mounted) {
       setState(() => _isOverlayActive = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Floating bubble activated'),
+          content: Text('Floating Assistant Bubble activated'),
           duration: Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
         ),
@@ -954,6 +937,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
 
+          if (FeatureFlags.floatingOverlayEnabled)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: _buildFloatingBubbleMasterCard(isDark, compact: true),
+            ),
+
           const Divider(indent: 16, endIndent: 16, height: 20),
 
           // Section CHAT HISTORY
@@ -1352,7 +1341,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            const SizedBox(height: 48),
+            if (FeatureFlags.floatingOverlayEnabled) ...[
+              const SizedBox(height: 32),
+              _buildFloatingBubbleMasterCard(isDark),
+            ],
+            const SizedBox(height: 36),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -1427,6 +1420,76 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingBubbleMasterCard(bool isDark, {bool compact = false}) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 12 : 16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141414) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? const Color(0xFF262626) : const Color(0xFFE2E8F0),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.25 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF1F5F9),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.bubble_chart_rounded,
+              color: isDark ? Colors.white : Colors.black87,
+              size: compact ? 18 : 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Floating Assistant Bubble',
+                  style: TextStyle(
+                    fontSize: compact ? 13 : 14,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Show floating shortcut on top of other apps',
+                  style: TextStyle(
+                    fontSize: compact ? 11 : 12,
+                    color: isDark ? const Color(0xFF888888) : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _isOverlayActive,
+            activeColor: isDark ? Colors.white : Colors.black,
+            activeTrackColor: isDark ? const Color(0xFF333333) : const Color(0xFFCBD5E1),
+            onChanged: (val) async {
+              await _toggleFloatingOverlay();
+            },
+          ),
+        ],
       ),
     );
   }

@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'dart:ui';
 import '../config/feature_flags.dart';
 import '../services/ai_service.dart';
 import '../services/screen_automation_service.dart';
+import '../services/floating_bubble_service.dart';
 import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -24,25 +24,35 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   int _currentStep = 0;
   bool _isAccessibilityGranted = false;
+  bool _isOverlayGranted = false;
   bool _isMicrophoneGranted = false;
   bool _isNotificationsGranted = false;
   bool _isContactsGranted = false;
   bool _isPhoneGranted = false;
   bool _isSmsGranted = false;
-  bool _isOverlayGranted = false;
 
   // AI config states
-  String _selectedProvider = 'deepseek';
+  String _selectedProvider = 'nvidia';
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _baseUrlController = TextEditingController(
-    text: 'https://api.deepseek.com',
+    text: AiService.nvidiaBaseUrl,
   );
   final TextEditingController _modelController = TextEditingController(
-    text: 'deepseek-chat',
+    text: AiService.nvidiaDefaultModel,
   );
   bool _obscureKey = true;
   bool _isValidating = false;
   String? _validationError;
+
+  // OLED Cyberpunk Palette
+  static const Color _bgBlack = Color(0xFF000000);
+  static const Color _surfaceCard = Color(0xFF111111);
+  static const Color _surfaceCardAlt = Color(0xFF0D0D0D);
+  static const Color _borderDark = Color(0xFF222222);
+  static const Color _borderHighlight = Color(0xFFFFFFFF);
+  static const Color _textWhite = Color(0xFFFFFFFF);
+  static const Color _textMuted = Color(0xFF888888);
+  static const Color _textSubtle = Color(0xFF555555);
 
   @override
   void initState() {
@@ -81,26 +91,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _checkPermissions() async {
-    final accessibilityRunning = await _screenAutomationService
-        .isServiceRunning();
+    final accessibilityRunning =
+        await _screenAutomationService.isServiceRunning();
+    final overlayGranted = await FloatingBubbleService.isPermissionGranted();
     final microphoneStatus = await Permission.microphone.status;
     final notificationsStatus = await Permission.notification.status;
     final contactsStatus = await Permission.contacts.status;
     final phoneStatus = await Permission.phone.status;
     final smsStatus = await Permission.sms.status;
-    final overlayGranted = FeatureFlags.floatingOverlayEnabled
-        ? await FlutterOverlayWindow.isPermissionGranted()
-        : false;
 
     if (mounted) {
       setState(() {
         _isAccessibilityGranted = accessibilityRunning;
+        _isOverlayGranted = overlayGranted;
         _isMicrophoneGranted = microphoneStatus.isGranted;
         _isNotificationsGranted = notificationsStatus.isGranted;
         _isContactsGranted = contactsStatus.isGranted;
         _isPhoneGranted = phoneStatus.isGranted;
         _isSmsGranted = smsStatus.isGranted;
-        _isOverlayGranted = overlayGranted;
       });
     }
   }
@@ -114,12 +122,28 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (!mounted) return;
     await showDialog<void>(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.85),
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Enable Screen Control'),
+        backgroundColor: _surfaceCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: _borderDark, width: 1.2),
+        ),
+        title: const Text(
+          'Enable Screen Control',
+          style: TextStyle(
+            color: _textWhite,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
         content: const Text(
-          'If Android shows “Restricted setting”, open App Info first, tap the '
-          'three-dot menu, and choose “Allow restricted settings”. Then return '
-          'and open Accessibility Settings to enable PrivateAgent Screen Control.',
+          'If Android displays "Restricted setting", navigate to App Info, tap the three-dot menu, and tap "Allow restricted settings". Then enable PrivateAgent Screen Control in Accessibility.',
+          style: TextStyle(
+            color: _textMuted,
+            fontSize: 13,
+            height: 1.45,
+          ),
         ),
         actions: [
           TextButton(
@@ -127,14 +151,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Navigator.pop(dialogContext);
               _screenAutomationService.openAccessibilitySettings();
             },
-            child: const Text('Accessibility Settings'),
+            child: const Text(
+              'Accessibility',
+              style: TextStyle(color: _textWhite, fontWeight: FontWeight.bold),
+            ),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () {
               Navigator.pop(dialogContext);
               openAppSettings();
             },
-            child: const Text('Open App Info First'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _textWhite,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'App Info',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -142,36 +179,31 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _requestOverlayPermission() async {
-    if (!FeatureFlags.floatingOverlayEnabled) return;
-    bool granted = await FlutterOverlayWindow.isPermissionGranted();
-    if (!granted) {
-      await FlutterOverlayWindow.requestPermission();
-      granted = await FlutterOverlayWindow.isPermissionGranted();
+    await FloatingBubbleService.requestPermission();
+    final granted = await FloatingBubbleService.isPermissionGranted();
+    if (mounted) {
+      setState(() {
+        _isOverlayGranted = granted;
+      });
     }
-    setState(() {
-      _isOverlayGranted = granted;
-    });
   }
 
   void _selectProvider(String provider) {
     setState(() {
       _selectedProvider = provider;
       _validationError = null;
-      if (provider == 'deepseek') {
+      if (provider == 'nvidia') {
+        _baseUrlController.text = AiService.nvidiaBaseUrl;
+        _modelController.text = AiService.nvidiaDefaultModel;
+      } else if (provider == 'deepseek') {
         _baseUrlController.text = 'https://api.deepseek.com';
         _modelController.text = 'deepseek-chat';
       } else if (provider == 'groq') {
         _baseUrlController.text = 'https://api.groq.com/openai/v1';
         _modelController.text = 'llama-3.3-70b-versatile';
-      } else if (provider == 'nvidia') {
-        _baseUrlController.text = AiService.nvidiaBaseUrl;
-        _modelController.text = AiService.nvidiaDefaultModel;
       } else if (provider == 'ollama') {
         _baseUrlController.text = 'http://10.0.2.2:11434/v1';
         _modelController.text = 'gemma2';
-      } else if (provider == 'local') {
-        _baseUrlController.text = 'http://10.0.2.2:1234/v1';
-        _modelController.text = 'qwen2.5-7b-instruct';
       } else {
         _baseUrlController.clear();
         _modelController.clear();
@@ -191,17 +223,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     if (baseUrl.isEmpty || model.isEmpty) {
       setState(() {
-        _validationError = 'Please fill out API Base URL and Model.';
+        _validationError = 'API Base URL and Model Name are required.';
         _isValidating = false;
       });
       return;
     }
 
-    if (_selectedProvider != 'ollama' &&
-        _selectedProvider != 'local' &&
-        apiKey.isEmpty) {
+    if (_selectedProvider != 'ollama' && apiKey.isEmpty) {
       setState(() {
-        _validationError = 'API Key is required for this provider.';
+        _validationError = 'API Key is required for cloud providers.';
         _isValidating = false;
       });
       return;
@@ -209,9 +239,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     try {
       final models = await _aiService.fetchAvailableModels(baseUrl, apiKey);
-      if (models.isNotEmpty ||
-          _selectedProvider == 'ollama' ||
-          _selectedProvider == 'local') {
+      if (models.isNotEmpty || _selectedProvider == 'ollama') {
         await _aiService.saveSettings(
           apiKey: apiKey,
           baseUrl: baseUrl,
@@ -220,22 +248,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('onboarding_completed', true);
 
+        // Auto-launch floating bubble if permissions allow
+        if (_isOverlayGranted && FeatureFlags.floatingOverlayEnabled) {
+          await FloatingBubbleService.startBubble();
+        }
+
         if (mounted) {
           setState(() {
             _isValidating = false;
           });
 
-          final isDark = Theme.of(context).brightness == Brightness.dark;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Configuration validated! Launching PrivateAgent...',
+              content: const Text(
+                'Neural engine verified. Initializing PrivateAgent...',
                 style: TextStyle(
-                  color: isDark ? Colors.black : Colors.white,
+                  color: Colors.black,
                   fontWeight: FontWeight.bold,
+                  fontSize: 13,
                 ),
               ),
-              backgroundColor: isDark ? Colors.white : Theme.of(context).colorScheme.primary,
+              backgroundColor: Colors.white,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -251,14 +284,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       } else {
         setState(() {
           _validationError =
-              'Failed to fetch models from the server. Verify base URL and API Key.';
+              'Could not connect to provider. Verify Base URL & API Key.';
           _isValidating = false;
         });
       }
     } catch (e) {
       setState(() {
-        _validationError =
-            'Error: ${e.toString().replaceFirst('Exception: ', '')}';
+        _validationError = 'Connection failed: ${e.toString().replaceFirst('Exception: ', '')}';
         _isValidating = false;
       });
     }
@@ -271,8 +303,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (baseUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Please enter an API Base URL first.'),
-          backgroundColor: Colors.redAccent,
+          content: const Text('Enter an API Base URL first.'),
+          backgroundColor: const Color(0xFF1E1E1E),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -288,7 +320,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     try {
       final models = await _aiService.fetchAvailableModels(baseUrl, apiKey);
-
       setState(() {
         _isValidating = false;
       });
@@ -297,10 +328,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text(
-                'No models found. Check base URL or API Key.',
-              ),
-              backgroundColor: Colors.orangeAccent,
+              content: const Text('No models returned from endpoint.'),
+              backgroundColor: const Color(0xFF1E1E1E),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -312,10 +341,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
 
       if (mounted) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
         showModalBottomSheet(
           context: context,
-          backgroundColor: isDark ? const Color(0xFF161329) : Colors.white,
+          backgroundColor: _surfaceCard,
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
@@ -329,12 +357,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   children: [
                     Text(
                       AiService.isNvidiaBaseUrl(baseUrl)
-                          ? 'Select a Free NVIDIA Model'
-                          : 'Select a Model',
-                      style: TextStyle(
-                        fontSize: 18,
+                          ? 'Available NVIDIA NIM Models'
+                          : 'Available Models',
+                      style: const TextStyle(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
+                        color: _textWhite,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -345,20 +373,19 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         itemBuilder: (context, index) {
                           final modelName = models[index];
                           return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                             title: Text(
                               modelName,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: isDark ? Colors.white70 : Colors.black87,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'monospace',
+                                color: _textWhite,
                               ),
                             ),
                             trailing: const Icon(
-                              Icons.chevron_right_rounded,
-                              size: 18,
+                              Icons.arrow_forward_ios_rounded,
+                              size: 14,
+                              color: _textMuted,
                             ),
                             onTap: () {
                               setState(() {
@@ -384,10 +411,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Error: ${e.toString().replaceFirst('Exception: ', '')}',
-            ),
-            backgroundColor: Colors.redAccent,
+            content: Text('Error: ${e.toString().replaceFirst('Exception: ', '')}'),
+            backgroundColor: const Color(0xFF7F1D1D),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -400,360 +425,246 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   bool get _canProceedToModel {
     return _isAccessibilityGranted &&
-        _isMicrophoneGranted &&
         (!FeatureFlags.floatingOverlayEnabled || _isOverlayGranted);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF000000)
-          : const Color(0xFFF8FAFC),
-      body: Stack(
-        children: [
-          // Background fluid glow effect
-          _buildBackgroundGlows(isDark),
-
-          // Blur filter over background glows
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 120, sigmaY: 120),
-              child: Container(color: Colors.transparent),
+      backgroundColor: _bgBlack,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Minimalist OLED Segmented Dashes Progress Indicator
+            Padding(
+              padding: const EdgeInsets.fromLTRB(28, 20, 28, 12),
+              child: _buildProgressDashes(),
             ),
-          ),
 
-          SafeArea(
-            child: Column(
-              children: [
-                // Top Custom Animated Stepper Bar
-                Padding(
-                  padding: const EdgeInsets.only(
-                    top: 24,
-                    left: 32,
-                    right: 32,
-                    bottom: 8,
-                  ),
-                  child: _buildAnimatedStepper(isDark),
-                ),
-
-                Expanded(
-                  child: PageView(
-                    controller: _pageController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    onPageChanged: (page) {
-                      setState(() {
-                        _currentStep = page;
-                      });
-                    },
-                    children: [
-                      _buildWelcomePage(isDark),
-                      _buildPermissionsPage(isDark),
-                      _buildModelSetupPage(isDark),
-                    ],
-                  ),
-                ),
-              ],
+            // Step Content
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                onPageChanged: (page) {
+                  setState(() {
+                    _currentStep = page;
+                  });
+                },
+                children: [
+                  _buildWelcomePage(),
+                  _buildPermissionsPage(),
+                  _buildModelSetupPage(),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildBackgroundGlows(bool isDark) {
-    return Positioned.fill(
-      child: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            right: -100,
-            child: Container(
-              width: 350,
-              height: 350,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    isDark
-                        ? Colors.white.withOpacity(0.04)
-                        : Colors.black.withOpacity(0.03),
-                    isDark
-                        ? Colors.white.withOpacity(0)
-                        : Colors.black.withOpacity(0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -50,
-            left: -100,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    isDark
-                        ? Colors.white.withOpacity(0.03)
-                        : Colors.black.withOpacity(0.02),
-                    isDark
-                        ? Colors.white.withOpacity(0)
-                        : Colors.black.withOpacity(0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildProgressDashes() {
+    final labels = ['IDENTITY', 'BRIDGE', 'ENGINE'];
 
-  Widget _buildAnimatedStepper(bool isDark) {
     return Column(
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(3, (index) {
             final isActive = _currentStep == index;
             final isCompleted = _currentStep > index;
 
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOutCubic,
-              height: 6,
-              width: isActive
-                  ? MediaQuery.of(context).size.width * 0.35
-                  : MediaQuery.of(context).size.width * 0.22,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: isActive
-                    ? Theme.of(context).primaryColor
-                    : isCompleted
-                    ? Theme.of(context).primaryColor.withOpacity(0.5)
-                    : (isDark
-                          ? const Color(0xFF1E293B)
-                          : const Color(0xFFE2E8F0)),
-                boxShadow: isActive
-                    ? [
-                        BoxShadow(
-                          color: Theme.of(
-                            context,
-                          ).primaryColor.withOpacity(0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(
+                  right: index < 2 ? 8.0 : 0.0,
+                ),
+                height: 3.5,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(2),
+                  color: (isActive || isCompleted)
+                      ? _borderHighlight
+                      : const Color(0xFF2A2A2A),
+                ),
               ),
             );
           }),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildStepperLabel(0, 'Welcome'),
-            _buildStepperLabel(1, 'Permissions'),
-            _buildStepperLabel(2, 'AI Setup'),
-          ],
+          children: List.generate(3, (index) {
+            final isActive = _currentStep == index;
+            return Text(
+              labels[index],
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                letterSpacing: 1.5,
+                color: isActive ? _textWhite : _textSubtle,
+              ),
+            );
+          }),
         ),
       ],
     );
   }
 
-  Widget _buildStepperLabel(int index, String text) {
-    final isActive = _currentStep == index;
-    final isCompleted = _currentStep > index;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
-        color: isActive
-            ? Theme.of(context).primaryColor
-            : isCompleted
-            ? (isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569))
-            : (isDark ? const Color(0xFF475569) : const Color(0xFF94A3B8)),
-      ),
-    );
-  }
-
-  // --- STEP 1: WELCOME SCREEN ---
-  Widget _buildWelcomePage(bool isDark) {
+  // ==========================================
+  // STEP 1: WELCOME / CORE IDENTITY
+  // ==========================================
+  Widget _buildWelcomePage() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Spacer(flex: 3),
-          // Large Custom Glowing Logo Container
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Outer Halo Glow
-              Container(
-                width: 170,
-                height: 170,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Theme.of(context).primaryColor.withOpacity(0.12),
-                ),
-              ),
-              Container(
-                width: 140,
-                height: 140,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDark ? const Color(0xFF111111) : Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-                      blurRadius: 25,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: Theme.of(context).primaryColor.withOpacity(0.15),
-                    width: 1.5,
-                  ),
-                ),
-                child: Icon(
-                  Icons.smart_toy_rounded,
-                  size: 70,
-                  color: Theme.of(context).primaryColor,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(flex: 2),
-          // Clean Title
-          Text(
-            'PrivateAgent',
-            style: TextStyle(
-              fontSize: 38,
-              fontWeight: FontWeight.w900,
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
-              letterSpacing: -0.5,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Your local, secure, and smart mobile companion. PrivateAgent can navigate apps, perform operations, and speak with you.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15,
-              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
-              height: 1.55,
-            ),
-          ),
           const Spacer(flex: 2),
 
-          // Custom Sleek Features list
-          _buildFeatureCard(
-            Icons.vpn_key_outlined,
-            'Local & Private',
-            'Full support for local-first execution. Keys remain encrypted locally.',
-            isDark,
-          ),
-          const SizedBox(height: 12),
-          _buildFeatureCard(
-            Icons.ads_click_rounded,
-            'Automated Actions',
-            'Can read your screen and perform operations across other apps.',
-            isDark,
-          ),
-
-          const Spacer(flex: 3),
-          // Get Started button
+          // Cybernetic Agent Core Glyph (Minimalist white with subtle glow)
           Container(
-            width: double.infinity,
-            height: 56,
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              color: Theme.of(context).colorScheme.primary,
+              shape: BoxShape.circle,
+              color: _surfaceCardAlt,
+              border: Border.all(color: _borderDark, width: 1.5),
               boxShadow: [
                 BoxShadow(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withOpacity(0.25),
-                  blurRadius: 15,
-                  offset: const Offset(0, 6),
+                  color: Colors.white.withOpacity(0.06),
+                  blurRadius: 30,
+                  spreadRadius: 2,
                 ),
               ],
             ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Concentric inner boundary
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.terminal_rounded,
+                  size: 46,
+                  color: _textWhite,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // Core Identity Header & Tagline
+          const Text(
+            'PrivateAgent',
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              color: _textWhite,
+              letterSpacing: -0.8,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Autonomous Device Control. Local-first intelligence.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+              color: _textMuted,
+              height: 1.4,
+            ),
+          ),
+          const Spacer(flex: 2),
+
+          // Feature Cards: Dark glassmorphic containers (0xFF111111, border 0xFF222222)
+          _buildFeatureCard(
+            Icons.shield_outlined,
+            'Local-First Privacy',
+            'Zero cloud telemetry. API keys and operational data remain strictly on-device.',
+          ),
+          const SizedBox(height: 12),
+          _buildFeatureCard(
+            Icons.touch_app_outlined,
+            'Autonomous Screen Driver',
+            'Performs native clicks, typing, and navigation across any Android application.',
+          ),
+          const SizedBox(height: 12),
+          _buildFeatureCard(
+            Icons.memory_rounded,
+            'Neural Orchestration',
+            'Full support for NVIDIA NIM, DeepSeek, Groq, and local Ollama inference.',
+          ),
+
+          const Spacer(flex: 3),
+
+          // Action Button: High-contrast pure white pill with black text
+          SizedBox(
+            width: double.infinity,
+            height: 52,
             child: ElevatedButton(
               onPressed: () {
                 _pageController.nextPage(
-                  duration: const Duration(milliseconds: 400),
+                  duration: const Duration(milliseconds: 350),
                   curve: Curves.easeOutCubic,
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                shadowColor: Colors.transparent,
+                backgroundColor: _textWhite,
+                foregroundColor: Colors.black,
+                elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(26),
                 ),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'Get Started',
+                    'Initialize Agent →',
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
                       letterSpacing: 0.2,
                     ),
                   ),
-                  SizedBox(width: 10),
-                  Icon(Icons.arrow_forward_rounded, size: 20),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  Widget _buildFeatureCard(
-    IconData icon,
-    String title,
-    String subtitle,
-    bool isDark,
-  ) {
+  Widget _buildFeatureCard(IconData icon, String title, String subtitle) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
-          width: 1.2,
-        ),
+        color: _surfaceCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _borderDark, width: 1.2),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.12),
-              shape: BoxShape.circle,
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _borderDark, width: 1),
             ),
-            child: Icon(icon, size: 22, color: Theme.of(context).primaryColor),
+            child: Icon(icon, size: 20, color: _textWhite),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -762,17 +673,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: 13.5,
+                    color: _textWhite,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark
-                        ? const Color(0xFF94A3B8)
-                        : const Color(0xFF475569),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: _textMuted,
+                    height: 1.35,
                   ),
                 ),
               ],
@@ -783,102 +694,98 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     );
   }
 
-  // --- STEP 2: PERMISSIONS SCREEN ---
-  Widget _buildPermissionsPage(bool isDark) {
+  // ==========================================
+  // STEP 2: PRIVILEGES & SYSTEM BRIDGE
+  // ==========================================
+  Widget _buildPermissionsPage() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           const Text(
-            'Configure Permissions',
+            'System Bridge & Privileges',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.w900,
+              color: _textWhite,
               letterSpacing: -0.5,
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            'Permissions are needed to interact with other apps.',
+          const Text(
+            'Grant device permissions to enable screen reading and autonomous operations.',
             style: TextStyle(
-              fontSize: 14,
-              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+              fontSize: 13,
+              color: _textMuted,
+              height: 1.35,
             ),
           ),
           const SizedBox(height: 16),
+
           Expanded(
             child: ListView(
               physics: const BouncingScrollPhysics(),
               children: [
-                _buildSectionHeader('MANDATORY', isDark),
+                // Core Required Section
+                _buildSectionLabel('CORE REQUIRED'),
                 _buildPermissionCard(
                   'Screen Control (Accessibility)',
-                  'Allows the AI to read your screen and automatically perform clicks, scrolls, and typing to execute tasks across other apps on your phone.',
-                  Icons.visibility_rounded,
+                  'Allows the agent to read screen hierarchies and automate clicks, typing, and gestures.',
+                  Icons.visibility_outlined,
                   _isAccessibilityGranted,
                   _requestAccessibility,
-                  isDark,
                 ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
-                  'Microphone',
-                  'Required to listen to your voice commands and convert speech to text.',
-                  Icons.mic_rounded,
-                  _isMicrophoneGranted,
-                  () => _requestPermission(Permission.microphone),
-                  isDark,
-                ),
-                if (FeatureFlags.floatingOverlayEnabled) ...[
-                  const SizedBox(height: 12),
+                const SizedBox(height: 10),
+                if (FeatureFlags.floatingOverlayEnabled)
                   _buildPermissionCard(
-                    'Display Over Other Apps (Floating Bubble)',
-                    'Allows PrivateAgent to show a floating overlay bubble when backgrounded or executing a task so you can monitor progress and execute actions.',
-                    Icons.layers_rounded,
+                    'Display Over Other Apps (Overlay)',
+                    'Shows the floating shortcut bubble over other apps for continuous agent control.',
+                    Icons.layers_outlined,
                     _isOverlayGranted,
                     _requestOverlayPermission,
-                    isDark,
                   ),
-                ],
-                const SizedBox(height: 20),
-                _buildSectionHeader('OPTIONAL', isDark),
+
+                const SizedBox(height: 18),
+
+                // Optional Section
+                _buildSectionLabel('OPTIONAL DRIVERS'),
+                _buildPermissionCard(
+                  'Microphone',
+                  'Enables speech recognition and voice-directed autonomous commands.',
+                  Icons.mic_none_rounded,
+                  _isMicrophoneGranted,
+                  () => _requestPermission(Permission.microphone),
+                ),
+                const SizedBox(height: 10),
                 _buildPermissionCard(
                   'Notifications',
-                  'Allows PrivateAgent to show ongoing tasks, alerts, and execution updates in your notification tray.',
-                  Icons.notifications_rounded,
+                  'Displays task progress and alerts in the Android system notification tray.',
+                  Icons.notifications_none_rounded,
                   _isNotificationsGranted,
                   () => _requestPermission(Permission.notification),
-                  isDark,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildPermissionCard(
                   'Contacts',
-                  'Used to look up phone numbers and contact names when you ask the AI to call or text someone.',
-                  Icons.contacts_rounded,
+                  'Enables the agent to lookup phone numbers and contacts upon request.',
+                  Icons.contacts_outlined,
                   _isContactsGranted,
                   () => _requestPermission(Permission.contacts),
-                  isDark,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildPermissionCard(
-                  'Phone',
-                  'Enables the AI to dial phone calls on your behalf when requested.',
-                  Icons.phone_rounded,
-                  _isPhoneGranted,
-                  () => _requestPermission(Permission.phone),
-                  isDark,
+                  'Phone & SMS',
+                  'Enables the agent to dial phone numbers and send messages autonomously.',
+                  Icons.phone_android_rounded,
+                  _isPhoneGranted && _isSmsGranted,
+                  () async {
+                    await _requestPermission(Permission.phone);
+                    await _requestPermission(Permission.sms);
+                  },
                 ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
-                  'SMS',
-                  'Allows the AI to send and read text messages on your behalf when requested.',
-                  Icons.sms_rounded,
-                  _isSmsGranted,
-                  () => _requestPermission(Permission.sms),
-                  isDark,
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -889,68 +796,47 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               TextButton(
                 onPressed: () {
                   _pageController.previousPage(
-                    duration: const Duration(milliseconds: 400),
+                    duration: const Duration(milliseconds: 350),
                     curve: Curves.easeOutCubic,
                   );
                 },
-                style: TextButton.styleFrom(
-                  foregroundColor: isDark
-                      ? Colors.white
-                      : const Color(0xFF475569),
-                ),
                 child: const Text(
                   'Back',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: _textMuted,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               const Spacer(),
-              Container(
+              SizedBox(
                 height: 48,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  color: _canProceedToModel
-                      ? Theme.of(context).colorScheme.primary
-                      : (isDark
-                            ? const Color(0xFF1E293B)
-                            : const Color(0xFFE2E8F0)),
-                  boxShadow: _canProceedToModel
-                      ? [
-                          BoxShadow(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withOpacity(0.25),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
                 child: ElevatedButton(
                   onPressed: _canProceedToModel
                       ? () {
                           _pageController.nextPage(
-                            duration: const Duration(milliseconds: 400),
+                            duration: const Duration(milliseconds: 350),
                             curve: Curves.easeOutCubic,
                           );
                         }
                       : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Colors.white,
-                    shadowColor: Colors.transparent,
-                    disabledForegroundColor: isDark
-                        ? const Color(0xFF475569)
-                        : const Color(0xFF94A3B8),
+                    backgroundColor: _canProceedToModel ? _textWhite : const Color(0xFF1A1A1A),
+                    foregroundColor: _canProceedToModel ? Colors.black : _textSubtle,
+                    disabledBackgroundColor: const Color(0xFF1A1A1A),
+                    disabledForegroundColor: _textSubtle,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
                   ),
                   child: const Row(
                     children: [
                       Text(
-                        'Next',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        'Continue',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                       ),
                       SizedBox(width: 8),
                       Icon(Icons.arrow_forward_rounded, size: 16),
@@ -960,22 +846,22 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
         ],
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title, bool isDark) {
+  Widget _buildSectionLabel(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4, left: 4),
+      padding: const EdgeInsets.only(bottom: 8, top: 4, left: 2),
       child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 11,
+        text,
+        style: const TextStyle(
+          fontSize: 10,
           fontWeight: FontWeight.w800,
-          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
-          letterSpacing: 1.5,
+          color: _textSubtle,
+          letterSpacing: 1.8,
         ),
       ),
     );
@@ -987,231 +873,203 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     IconData icon,
     bool isGranted,
     VoidCallback onGrant,
-    bool isDark,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(22),
+        color: _surfaceCard,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isGranted
-              ? Colors.green.withOpacity(0.3)
-              : Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
+          color: isGranted ? Colors.white.withOpacity(0.3) : _borderDark,
           width: 1.2,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 18, color: _textWhite),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: _textWhite,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: _textMuted,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (isGranted)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _textWhite,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 20,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
+                  Icon(Icons.check_rounded, color: Colors.black, size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    'ACTIVE',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 10,
+                      letterSpacing: 0.5,
                     ),
                   ),
-                  if (isGranted)
-                    const Icon(
-                      Icons.check_circle_rounded,
-                      color: Colors.green,
-                      size: 24,
-                    )
-                  else
-                    ElevatedButton(
-                      onPressed: onGrant,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        minimumSize: const Size(60, 36),
-                      ),
-                      child: const Text(
-                        'Grant',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                description,
+            )
+          else
+            OutlinedButton(
+              onPressed: onGrant,
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: _textWhite, width: 1.2),
+                backgroundColor: Colors.transparent,
+                foregroundColor: _textWhite,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                minimumSize: const Size(60, 32),
+              ),
+              child: const Text(
+                'GRANT',
                 style: TextStyle(
-                  fontSize: 12.5,
-                  height: 1.45,
-                  color: isDark
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF475569),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }
 
-  // --- STEP 3: MODEL SETUP SCREEN ---
-  Widget _buildModelSetupPage(bool isDark) {
+  // ==========================================
+  // STEP 3: NEURAL ENGINE SETUP
+  // ==========================================
+  Widget _buildModelSetupPage() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           const Text(
-            'Configure AI Model',
+            'Neural Engine Setup',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.w900,
+              color: _textWhite,
               letterSpacing: -0.5,
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            'Select a provider to prefill API details automatically.',
+          const Text(
+            'Select an inference provider to pre-configure connection parameters.',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+              color: _textMuted,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Providers Grid/List
+          // Provider Selector Tiles (OLED cards, 1.5px white border when active)
           SizedBox(
-            height: 90,
+            height: 74,
             child: ListView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               children: [
-                _buildProviderCard(
-                  'deepseek',
-                  'DeepSeek',
-                  Icons.analytics_rounded,
-                  isDark,
-                ),
+                _buildProviderTile('nvidia', 'NVIDIA', Icons.memory_rounded),
                 const SizedBox(width: 10),
-                _buildProviderCard('groq', 'Groq', Icons.speed_rounded, isDark),
+                _buildProviderTile('deepseek', 'DeepSeek', Icons.analytics_outlined),
                 const SizedBox(width: 10),
-                _buildProviderCard(
-                  'nvidia',
-                  'NVIDIA',
-                  Icons.memory_rounded,
-                  isDark,
-                ),
+                _buildProviderTile('groq', 'Groq', Icons.speed_rounded),
                 const SizedBox(width: 10),
-                _buildProviderCard(
-                  'ollama',
-                  'Ollama',
-                  Icons.computer_rounded,
-                  isDark,
-                ),
+                _buildProviderTile('ollama', 'Ollama', Icons.computer_rounded),
                 const SizedBox(width: 10),
-                _buildProviderCard(
-                  'local',
-                  'Local Server',
-                  Icons.dns_rounded,
-                  isDark,
-                ),
-                const SizedBox(width: 10),
-                _buildProviderCard(
-                  'custom',
-                  'Custom',
-                  Icons.settings_suggest_rounded,
-                  isDark,
-                ),
+                _buildProviderTile('custom', 'Custom', Icons.tune_rounded),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
+          // Configuration Inputs
           Expanded(
             child: ListView(
               physics: const BouncingScrollPhysics(),
               children: [
-                if (_selectedProvider != 'ollama' &&
-                    _selectedProvider != 'local') ...[
-                  _buildFormTextField(
+                if (_selectedProvider != 'ollama') ...[
+                  _buildMonospaceTextField(
                     controller: _apiKeyController,
-                    label: 'API Key',
-                    hint: 'sk-xxxxxxxxxxxx',
+                    label: 'API KEY',
+                    hint: 'nvapi-xxxxxxxxxxxx / sk-xxxxxxxxxxxx',
                     obscure: _obscureKey,
-                    isDark: isDark,
                     suffix: IconButton(
                       icon: Icon(
                         _obscureKey
-                            ? Icons.visibility_off_rounded
-                            : Icons.visibility_rounded,
-                        color: Colors.grey,
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: _textMuted,
+                        size: 18,
                       ),
-                      onPressed: () =>
-                          setState(() => _obscureKey = !_obscureKey),
+                      onPressed: () => setState(() => _obscureKey = !_obscureKey),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                 ],
-                _buildFormTextField(
+                _buildMonospaceTextField(
                   controller: _baseUrlController,
-                  label: 'API Base URL',
-                  hint: 'https://api.deepseek.com',
-                  isDark: isDark,
+                  label: 'API BASE URL',
+                  hint: 'https://integrate.api.nvidia.com/v1',
                 ),
-                const SizedBox(height: 16),
-                _buildFormTextField(
+                const SizedBox(height: 14),
+                _buildMonospaceTextField(
                   controller: _modelController,
-                  label: 'Model Name',
-                  hint: 'deepseek-chat',
-                  isDark: isDark,
+                  label: 'MODEL IDENTIFIER',
+                  hint: 'meta/llama-3.3-70b-instruct',
                   suffix: IconButton(
                     icon: _isValidating
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                isDark ? Colors.white : Colors.black,
-                              ),
+                              color: _textWhite,
                             ),
                           )
-                        : Icon(
+                        : const Icon(
                             Icons.sync_rounded,
-                            color: isDark ? Colors.white : Colors.black,
+                            color: _textWhite,
+                            size: 18,
                           ),
                     tooltip: 'Fetch models list',
                     onPressed: _isValidating ? null : _fetchModels,
@@ -1219,27 +1077,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 ),
 
                 if (_validationError != null) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.1),
+                      color: const Color(0xFF1E0A0A),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.redAccent.withOpacity(0.2),
-                      ),
+                      border: Border.all(color: const Color(0xFF7F1D1D), width: 1),
                     ),
                     child: Text(
                       _validationError!,
                       style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontSize: 13,
-                        height: 1.4,
+                        color: Color(0xFFF87171),
+                        fontSize: 12,
+                        height: 1.35,
                       ),
                     ),
                   ),
                 ],
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -1252,62 +1108,42 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ? null
                     : () {
                         _pageController.previousPage(
-                          duration: const Duration(milliseconds: 400),
+                          duration: const Duration(milliseconds: 350),
                           curve: Curves.easeOutCubic,
                         );
                       },
-                style: TextButton.styleFrom(
-                  foregroundColor: isDark
-                      ? Colors.white
-                      : const Color(0xFF475569),
-                ),
                 child: const Text(
                   'Back',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: _textMuted,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               const Spacer(),
-              Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: _isValidating
-                      ? (isDark
-                            ? const Color(0xFF1E293B)
-                            : const Color(0xFFE2E8F0))
-                      : Theme.of(context).colorScheme.primary,
-                  boxShadow: _isValidating
-                      ? null
-                      : [
-                          BoxShadow(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withOpacity(0.25),
-                            blurRadius: 12,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                ),
+              SizedBox(
+                height: 48,
                 child: ElevatedButton(
                   onPressed: _isValidating ? null : _testAndSave,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Colors.white,
-                    shadowColor: Colors.transparent,
+                    backgroundColor: _textWhite,
+                    foregroundColor: Colors.black,
+                    disabledBackgroundColor: const Color(0xFF1A1A1A),
+                    disabledForegroundColor: _textSubtle,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    padding: const EdgeInsets.symmetric(horizontal: 26),
                   ),
                   child: _isValidating
                       ? const SizedBox(
-                          width: 22,
-                          height: 22,
+                          width: 20,
+                          height: 20,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
+                            strokeWidth: 2,
+                            color: Colors.black,
                           ),
                         )
                       : const Row(
@@ -1315,140 +1151,118 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             Text(
                               'Finish Setup',
                               style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
                               ),
                             ),
                             SizedBox(width: 8),
-                            Icon(Icons.check_circle_outline_rounded, size: 20),
+                            Icon(Icons.check_circle_outline_rounded, size: 18),
                           ],
                         ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
         ],
       ),
     );
   }
 
-  Widget _buildProviderCard(
-    String id,
-    String label,
-    IconData icon,
-    bool isDark,
-  ) {
+  Widget _buildProviderTile(String id, String label, IconData icon) {
     final isSelected = _selectedProvider == id;
 
-    return Container(
-      width: 104,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
-          width: isSelected ? 2 : 1.2,
-        ),
-        boxShadow: isSelected
-            ? [
-                BoxShadow(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withOpacity(0.15),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: Card(
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        color: isSelected
-            ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
-            : Theme.of(context).colorScheme.surface,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => _selectProvider(id),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 26,
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : (isDark ? Colors.grey[400] : Colors.grey[600]),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : (isDark ? Colors.grey[300] : Colors.grey[700]),
-                ),
-              ),
-            ],
+    return GestureDetector(
+      onTap: () => _selectProvider(id),
+      child: Container(
+        width: 84,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: _surfaceCard,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? _borderHighlight : _borderDark,
+            width: isSelected ? 1.5 : 1.0,
           ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? _textWhite : _textMuted,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? _textWhite : _textMuted,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildFormTextField({
+  Widget _buildMonospaceTextField({
     required TextEditingController controller,
     required String label,
     required String hint,
     bool obscure = false,
     Widget? suffix,
-    required bool isDark,
   }) {
     return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.15 : 0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+        color: _surfaceCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _borderDark, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+              color: _textMuted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  obscureText: obscure,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    color: _textWhite,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: hint,
+                    hintStyle: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: _textSubtle,
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              if (suffix != null) suffix,
+            ],
           ),
         ],
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        style: const TextStyle(fontSize: 14),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(
-            fontSize: 13,
-            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
-          ),
-          hintText: hint,
-          hintStyle: TextStyle(
-            fontSize: 13,
-            color: isDark ? Colors.grey[700] : Colors.grey[400],
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          border: InputBorder.none,
-          suffixIcon: suffix,
-        ),
       ),
     );
   }

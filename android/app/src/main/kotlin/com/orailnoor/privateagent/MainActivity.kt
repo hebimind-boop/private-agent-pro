@@ -82,6 +82,24 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
 
+                        "startFloatingBubble" -> {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+                                result.error("PERMISSION_DENIED", "Overlay permission not granted", null)
+                            } else {
+                                FloatingOverlayService.start(context)
+                                result.success(true)
+                            }
+                        }
+
+                        "stopFloatingBubble" -> {
+                            FloatingOverlayService.stop(context)
+                            result.success(true)
+                        }
+
+                        "isFloatingBubbleActive" -> {
+                            result.success(FloatingOverlayService.isRunning)
+                        }
+
                         "showMacroOverlay" -> {
                             // Macro overlay requires an Activity context, so we just ignore or return error if called from background
                             result.error("NOT_SUPPORTED", "Macro overlay not supported from background", null)

@@ -62,25 +62,25 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.9-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.10-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.9-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.9' }}
-          name: "PrivateAgent Pro v1.0.9 - Direct Browser Download Updates via url_launcher"
+            build/app/outputs/flutter-apk/PrivateAgent-v1.0.10-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.10' }}
+          name: "PrivateAgent Pro v1.0.10 - OLED Cyberpunk Onboarding & Floating Bubble Master Lifecycle"
           body: |
-            ### PrivateAgent Pro v1.0.9
-            - **Direct Browser Download Updates via url_launcher**: Replaced in-app streaming downloads and complex PackageInstaller sessions with instant external browser redirect to the release APK asset.
-            - **Zero-Click Dialog Dismissal**: Tapping 'Update Now' triggers `LaunchMode.externalApplication` and immediately dismisses the dialog for a seamless Android OS browser download experience.
-            - **Native Code Sanitization**: Stripped `PackageInstaller` sessions, streaming sinks, and FileProvider workarounds from `MainActivity.kt`, minimizing native footprint.
-            - **Permanent Keystore Signature Lock**: Signed with dedicated release keystore (`release.jks`) ensuring persistent cryptographic signatures across updates.
+            ### PrivateAgent Pro v1.0.10
+            - **OLED Monochrome Cyberpunk Onboarding**: Completely overhauled `OnboardingScreen` into Pure OLED Black (`#000000`) with high-contrast monochrome typography, segmented dashes progress indicator, and cybernetic glyphs.
+            - **Floating Assistant Bubble Master Lifecycle**: Dedicated Master Switch toggle in Home and Settings screens persisting state (`isFloatingBubbleEnabled`) with synchronized native WindowManager lifecycle (`FLAG_NOT_FOCUSABLE`).
+            - **Neural Engine Provider Cards**: Quick setup tiles for NVIDIA NIM, DeepSeek, Groq, and Ollama with high-contrast active borders and clean monospace field styling.
+            - **Native Service Isolation**: Added native `FloatingOverlayService` with drag-to-move and tap-to-focus capabilities, cleanly registered in `AndroidManifest.xml`.
 
             #### Direct Download
-            Download **PrivateAgent-v1.0.9-pro.apk** below to install or update.
+            Download **PrivateAgent-v1.0.10-pro.apk** below to install or update.
           draft: false
           prerelease: false
           make_latest: true

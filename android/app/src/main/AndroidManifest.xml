@@ -117,6 +117,20 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- Floating Assistant Bubble Overlay Service -->
+        <service
+            android:name=".FloatingOverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <!-- Flutter Overlay Window Service -->
+        <service
+            android:name="flutter.overlay.window.flutter_overlay_window.OverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

@@ -11,6 +11,7 @@ import '../services/update_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../config/feature_flags.dart';
+import '../services/floating_bubble_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AiService aiService;
@@ -83,13 +84,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _checkOverlayStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final bubblePref = prefs.getBool('floating_bubble_enabled') ?? true;
-    bool isActive = await FlutterOverlayWindow.isActive();
-    bool isGranted = await FlutterOverlayWindow.isPermissionGranted();
+    final enabled = await FloatingBubbleService.isEnabled();
+    final isGranted = await FloatingBubbleService.isPermissionGranted();
     if (mounted) {
       setState(() {
-        _floatingIconEnabled = isActive || bubblePref;
+        _floatingIconEnabled = enabled;
         _isOverlayPermissionGranted = isGranted;
       });
     }
@@ -707,20 +706,36 @@ class _SettingsScreenState extends State<SettingsScreen>
                 },
                 contentPadding: EdgeInsets.zero,
               ),
-              if (FeatureFlags.floatingOverlayEnabled)
+            ],
+          ),
+
+          // 5. Dedicated Floating Assistant Bubble Master Card
+          if (FeatureFlags.floatingOverlayEnabled)
+            _buildSettingsCard(
+              icon: Icons.bubble_chart_rounded,
+              title: 'Floating Assistant Bubble',
+              subtitle: 'Show floating shortcut on top of other apps',
+              isDark: isDark,
+              children: [
                 SwitchListTile(
-                  title: const Text('Enable Floating Agent Icon'),
-                  subtitle: const Text('Assign tasks without opening the app'),
+                  title: const Text(
+                    'Floating Assistant Bubble',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Show floating shortcut on top of other apps',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   value: _floatingIconEnabled,
                   onChanged: (val) async {
                     if (val) {
-                      bool isGranted =
-                          await FlutterOverlayWindow.isPermissionGranted();
-                      if (!isGranted) {
-                        await FlutterOverlayWindow.requestPermission();
-                        isGranted =
-                            await FlutterOverlayWindow.isPermissionGranted();
-                        if (!isGranted) {
+                      final hasPerm =
+                          await FloatingBubbleService.isPermissionGranted();
+                      if (!hasPerm) {
+                        await FloatingBubbleService.requestPermission();
+                        final afterPerm =
+                            await FloatingBubbleService.isPermissionGranted();
+                        if (!afterPerm) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -733,34 +748,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                           return;
                         }
                       }
-                      if (!await FlutterOverlayWindow.isActive()) {
-                        await FlutterOverlayWindow.showOverlay(
-                          enableDrag: true,
-                          overlayTitle: "PrivateAgent",
-                          overlayContent: "Floating Assistant",
-                          flag: OverlayFlag.focusPointer,
-                          alignment: OverlayAlignment.centerRight,
-                          visibility: NotificationVisibility.visibilitySecret,
-                          positionGravity: PositionGravity.auto,
-                          startPosition: const OverlayPosition(0, 200),
-                          width: 56,
-                          height: 56,
-                        );
-                      }
+                      await FloatingBubbleService.startBubble();
                     } else {
-                      if (await FlutterOverlayWindow.isActive()) {
-                        await FlutterOverlayWindow.closeOverlay();
-                      }
+                      await FloatingBubbleService.stopBubble();
                     }
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('floating_bubble_enabled', val);
                     setState(() => _floatingIconEnabled = val);
                     _autoSave();
                   },
                   contentPadding: EdgeInsets.zero,
                 ),
-            ],
-          ),
+              ],
+            ),
 
           // 5. Telegram Remote Access Card
           _buildSettingsCard(
