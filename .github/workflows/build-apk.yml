@@ -62,28 +62,29 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.7-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.8-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.7-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.7' }}
-          name: "PrivateAgent Pro v1.0.7 - Telegram-Spec Silent PackageInstaller Session"
+            build/app/outputs/flutter-apk/PrivateAgent-v1.0.8-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.8' }}
+          name: "PrivateAgent Pro v1.0.8 - Permanent Release Keystore Signature Lock"
           body: |
-            ### PrivateAgent Pro v1.0.7
+            ### PrivateAgent Pro v1.0.8
+            - **Permanent Release Keystore Signature Lock**: Locked release build signing to a permanent, dedicated 2048-bit RSA release keystore (`release.jks`), guaranteeing consistent cryptographic signatures across all OTA updates.
             - **Telegram-Spec Native PackageInstaller Session**: Direct streaming session to Android's `PackageInstaller` with `USER_ACTION_NOT_REQUIRED` on Android 12+ (API 31+) for near-zero-click background updates.
             - **Dynamic Version Binding**: Runtime resolution from Android `PackageManager` bound to Software Updates card and SnackBars (`Current Version: v${packageInfo.version}`).
             - **Autonomous Three-Tier Installation Pipeline**:
               - *Mode 1 (Privileged Shizuku)*: 100% silent zero-click background update and auto-restart.
               - *Mode 2 (Native PackageInstaller Session)*: Telegram-grade session install without manual file intent dialogs.
               - *Mode 3 (FileProvider Fallback)*: Standard `ACTION_VIEW` intent with unknown apps permission handling.
-            - **Full-Size Universal APK Streaming**: Multi-hop HTTP redirect auto-following to persistent public storage (`/storage/emulated/0/Download/PrivateAgent-v1.0.7-pro.apk`).
+            - **Full-Size Universal APK Streaming**: Multi-hop HTTP redirect auto-following to persistent public storage (`/storage/emulated/0/Download/PrivateAgent-v1.0.8-pro.apk`).
 
             #### Direct Download
-            Download **PrivateAgent-v1.0.7-pro.apk** below to install or update.
+            Download **PrivateAgent-v1.0.8-pro.apk** below to install or update.
           draft: false
           prerelease: false
           make_latest: true

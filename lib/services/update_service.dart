@@ -29,7 +29,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.7';
+  static const String currentVersion = '1.0.8';
   static const String repoOwner = 'hebimind-boop';
   static const String repoName = 'private-agent-pro';
   static const String latestReleaseUrl =
