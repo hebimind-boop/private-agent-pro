@@ -62,25 +62,25 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.10-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.11-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.10-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.10' }}
-          name: "PrivateAgent Pro v1.0.10 - OLED Cyberpunk Onboarding & Floating Bubble Master Lifecycle"
+            build/app/outputs/flutter-apk/PrivateAgent-v1.0.11-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.11' }}
+          name: "PrivateAgent Pro v1.0.11 - Floating Bubble Intent Routing & Native Lifecycle Resilience"
           body: |
-            ### PrivateAgent Pro v1.0.10
-            - **OLED Monochrome Cyberpunk Onboarding**: Completely overhauled `OnboardingScreen` into Pure OLED Black (`#000000`) with high-contrast monochrome typography, segmented dashes progress indicator, and cybernetic glyphs.
-            - **Floating Assistant Bubble Master Lifecycle**: Dedicated Master Switch toggle in Home and Settings screens persisting state (`isFloatingBubbleEnabled`) with synchronized native WindowManager lifecycle (`FLAG_NOT_FOCUSABLE`).
-            - **Neural Engine Provider Cards**: Quick setup tiles for NVIDIA NIM, DeepSeek, Groq, and Ollama with high-contrast active borders and clean monospace field styling.
-            - **Native Service Isolation**: Added native `FloatingOverlayService` with drag-to-move and tap-to-focus capabilities, cleanly registered in `AndroidManifest.xml`.
+            ### PrivateAgent Pro v1.0.11
+            - **Strict Intent Routing (`AgentOrchestrator`)**: Strict intent classifier separating casual conversation (greetings, queries, coding) from device automation commands. Conversational inputs route directly to pure LLM streaming chat without touching the accessibility bridge or opening random apps.
+            - **Floating Overlay Mode Switch**: Segmented OLED `[Chat]` / `[Agent]` toggle in the floating bubble matching the main interface with responsive hint placeholders.
+            - **Service Lifecycle Resilience**: Native `FloatingOverlayService` implements `onStartCommand()` returning `START_NOT_STICKY`, immediate `startForeground()` on channel `floating_bubble_service` (Importance LOW) before WindowManager calls, and overlay permission pre-checks.
+            - **Lag-Free Drag & Edge Snapping**: Throttled WindowManager layout updates to 16ms (60fps) during touch move events to prevent IPC saturation, with smooth `ValueAnimator` edge snapping on touch release.
 
             #### Direct Download
-            Download **PrivateAgent-v1.0.10-pro.apk** below to install or update.
+            Download **PrivateAgent-v1.0.11-pro.apk** below to install or update.
           draft: false
           prerelease: false
           make_latest: true

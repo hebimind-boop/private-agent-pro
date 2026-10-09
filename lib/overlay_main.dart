@@ -13,6 +13,7 @@ import 'services/screen_automation_service.dart';
 import 'services/app_launcher_service.dart';
 import 'services/shizuku_service.dart';
 import 'services/chat_history_service.dart';
+import 'services/agent_orchestrator.dart';
 import 'models/chat_message.dart';
 import 'widgets/message_bubble.dart';
 
@@ -31,6 +32,10 @@ class _OverlayAppState extends State<OverlayApp> {
   bool _isListening = false;
   final stt.SpeechToText _speech = stt.SpeechToText();
   final List<ChatMessage> _messages = [];
+
+  // Chat vs Agent mode switch
+  String _mode = 'chat'; // 'chat' or 'agent'
+  StreamSubscription<String>? _chatStreamSubscription;
 
   late final AiService _aiService;
   late final ScreenAutomationService _screenService;
@@ -60,13 +65,14 @@ class _OverlayAppState extends State<OverlayApp> {
       ChatMessage(
         role: 'assistant',
         content:
-            'Hi! I am your Private Agent. Ask me to perform any task on your screen.',
+            'Hi! I am your Private Agent. Ask me anything or switch to Agent mode to perform tasks on screen.',
       ),
     );
   }
 
   @override
   void dispose() {
+    _chatStreamSubscription?.cancel();
     _overlaySubscription?.cancel();
     _taskController.dispose();
     _scrollController.dispose();
@@ -206,6 +212,105 @@ class _OverlayAppState extends State<OverlayApp> {
     _taskController.clear(); // Clear immediately for responsive UX feedback
 
     await _servicesReady;
+
+    final isActionCommand =
+        _mode == 'agent' && AgentOrchestrator.isActionIntent(userTask);
+
+    if (!isActionCommand) {
+      // ----------------------------------------------------
+      // CHAT MODE: Pure LLM completion without touching
+      // accessibility bridge or automating phone UI.
+      // ----------------------------------------------------
+      final assistantMessage = ChatMessage(role: 'assistant', content: '');
+      setState(() {
+        _messages.add(assistantMessage);
+      });
+      final assistantIndex = _messages.length - 1;
+
+      try {
+        final stream = _aiService.sendMessageStream(
+          userTask,
+          isAgentMode: false,
+        );
+        String accumulated = '';
+        _chatStreamSubscription = stream.listen(
+          (chunk) {
+            accumulated += chunk;
+            if (mounted) {
+              setState(() {
+                _messages[assistantIndex] = ChatMessage(
+                  role: 'assistant',
+                  content: accumulated,
+                );
+              });
+              _scrollToBottom();
+            }
+          },
+          onError: (e) {
+            log("Overlay Chat Stream Error: $e");
+            if (mounted) {
+              final errorMsg =
+                  'Error: ${e.toString().replaceAll('Exception: ', '')}';
+              setState(() {
+                _isSent = false;
+                _messages[assistantIndex] = ChatMessage(
+                  role: 'assistant',
+                  content: errorMsg,
+                );
+                _scrollToBottom();
+              });
+              _persistOverlayMessage(
+                ChatMessage(role: 'assistant', content: errorMsg),
+              );
+            }
+          },
+          onDone: () {
+            _chatStreamSubscription = null;
+            if (accumulated.isEmpty && mounted) {
+              accumulated =
+                  'I didn\'t receive a response. Please check your AI API key in Settings.';
+              setState(() {
+                _messages[assistantIndex] = ChatMessage(
+                  role: 'assistant',
+                  content: accumulated,
+                );
+              });
+            }
+            _persistOverlayMessage(
+              ChatMessage(role: 'assistant', content: accumulated),
+            );
+            if (mounted) {
+              setState(() {
+                _isSent = false;
+              });
+            }
+          },
+          cancelOnError: true,
+        );
+      } catch (e) {
+        log("Overlay Chat Error: $e");
+        if (mounted) {
+          final errorMsg =
+              'Error: ${e.toString().replaceAll('Exception: ', '')}';
+          setState(() {
+            _isSent = false;
+            _messages[assistantIndex] = ChatMessage(
+              role: 'assistant',
+              content: errorMsg,
+            );
+            _scrollToBottom();
+          });
+          _persistOverlayMessage(
+            ChatMessage(role: 'assistant', content: errorMsg),
+          );
+        }
+      }
+      return;
+    }
+
+    // ----------------------------------------------------
+    // AGENT MODE: Autonomous phone UI actions
+    // ----------------------------------------------------
     if (!await _screenService.waitUntilReady()) {
       // Re-broadcast once if engine was cold-starting
       try {
@@ -309,12 +414,14 @@ class _OverlayAppState extends State<OverlayApp> {
 
   void _cancelTask() {
     _executor?.cancel();
+    _chatStreamSubscription?.cancel();
+    _chatStreamSubscription = null;
     if (mounted) {
       setState(() {
         _isSent = false;
         final cancelMsg = ChatMessage(
           role: 'assistant',
-          content: 'Task stopped by user.',
+          content: 'Stopped by user.',
         );
         _messages.add(cancelMsg);
         _scrollToBottom();
@@ -335,7 +442,7 @@ class _OverlayAppState extends State<OverlayApp> {
       );
       // Move to a safe position so the expanded panel stays on-screen
       await FlutterOverlayWindow.moveOverlay(initialPosition);
-      await FlutterOverlayWindow.resizeOverlay(300, 360, false);
+      await FlutterOverlayWindow.resizeOverlay(300, 380, false);
       setState(() {
         _isExpanded = true;
         _scrollToBottom();
@@ -455,12 +562,12 @@ class _OverlayAppState extends State<OverlayApp> {
     return OverflowBox(
       minWidth: 300,
       maxWidth: 300,
-      minHeight: 360,
-      maxHeight: 360,
+      minHeight: 380,
+      maxHeight: 380,
       alignment: Alignment.center,
       child: Container(
         width: 300,
-        height: 360,
+        height: 380,
         decoration: BoxDecoration(
           color: const Color(0xFF000000),
           borderRadius: BorderRadius.circular(24),
@@ -576,6 +683,9 @@ class _OverlayAppState extends State<OverlayApp> {
               ),
             ),
 
+            // Segmented Mode Selector: Chat vs Agent
+            _buildModeSelector(),
+
             // Message Log List
             Expanded(
               child: Container(
@@ -628,15 +738,17 @@ class _OverlayAppState extends State<OverlayApp> {
                                 fontSize: 12,
                                 color: Colors.white,
                               ),
-                              decoration: const InputDecoration(
-                                hintText: 'Type a command...',
-                                hintStyle: TextStyle(
+                              decoration: InputDecoration(
+                                hintText: _mode == 'agent'
+                                    ? 'Type an action command...'
+                                    : 'Ask anything...',
+                                hintStyle: const TextStyle(
                                   fontSize: 11.5,
                                   color: Color(0xFF8E8E93),
                                 ),
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
+                                contentPadding: const EdgeInsets.symmetric(
                                   vertical: 6,
                                 ),
                               ),
@@ -697,6 +809,93 @@ class _OverlayAppState extends State<OverlayApp> {
                           ),
                         ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeSelector() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0C0C0C),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFF222222), width: 1),
+        ),
+      ),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(2.5),
+          decoration: BoxDecoration(
+            color: const Color(0xFF18181A),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF2C2C2E), width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildModeButton(
+                'chat',
+                'Chat',
+                Icons.chat_bubble_outline_rounded,
+              ),
+              _buildModeButton(
+                'agent',
+                'Agent',
+                Icons.smart_toy_outlined,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeButton(String modeId, String label, IconData icon) {
+    final isSelected = _mode == modeId;
+    return GestureDetector(
+      onTap: () {
+        if (_mode != modeId) {
+          setState(() {
+            _mode = modeId;
+          });
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: isSelected ? Colors.white : Colors.transparent,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.white.withOpacity(0.15),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 12,
+              color: isSelected ? Colors.black : const Color(0xFF8E8E93),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? Colors.black : const Color(0xFF8E8E93),
               ),
             ),
           ],

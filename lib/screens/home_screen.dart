@@ -25,6 +25,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../main.dart';
 import '../config/feature_flags.dart';
 import '../services/floating_bubble_service.dart';
+import '../services/agent_orchestrator.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -210,7 +211,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final assistantIndex = _messages.length - 1;
 
     try {
-      final isAgent = _mode == 'agent';
+      final isActionIntent = AgentOrchestrator.isActionIntent(outgoingPrompt);
+      final isAgent = _mode == 'agent' && isActionIntent;
       final stream = _aiService
           .sendMessageStream(
             outgoingPrompt,
@@ -244,8 +246,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       await _saveSession();
 
-      // Check if it's an action
-      final action = _aiService.parseAction(accumulated);
+      // Check if it's an action (only executed if in Agent mode and action intent was detected)
+      final action = isAgent ? _aiService.parseAction(accumulated) : null;
 
       if (action != null) {
         // If it's an action, we remove the raw JSON message from display
