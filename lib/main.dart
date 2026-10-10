@@ -81,21 +81,24 @@ class PrivateAgentApp extends StatelessWidget {
       valueListenable: themeNotifier,
       builder: (context, ThemeMode currentMode, child) {
         return MaterialApp(
-          title: 'PrivateAgent',
+          title: 'BoopAgent',
           debugShowCheckedModeBanner: false,
           themeMode: currentMode,
           theme: ThemeData(
             brightness: Brightness.light,
-            primaryColor: const Color(0xFF4F46E5), // Indigo-600
+            primaryColor: const Color(0xFF000000), // Pure Black
             scaffoldBackgroundColor: const Color(
-              0xFFF8FAFC,
-            ), // Slate-50 background
+              0xFFFFFFFF,
+            ), // Pure White
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF4F46E5), // Indigo-600
-              secondary: Color(0xFF0EA5E9), // Sky-500
+              primary: Color(0xFF000000), // Solid Black
+              onPrimary: Color(0xFFFFFFFF), // Pure White
+              secondary: Color(0xFF27272A), // Dark Slate
+              onSecondary: Color(0xFFFFFFFF),
               surface: Color(0xFFFFFFFF),
-              onSurface: Color(0xFF1E293B), // Slate-800
-              surfaceContainerHighest: Color(0xFFF1F5F9), // Slate-100
+              onSurface: Color(0xFF09090B),
+              surfaceContainerHighest: Color(0xFFF4F4F5),
+              outline: Color(0xFFE4E4E7),
               error: Colors.redAccent,
             ),
             useMaterial3: true,
@@ -104,8 +107,8 @@ class PrivateAgentApp extends StatelessWidget {
               elevation: 0,
               scrolledUnderElevation: 0,
               backgroundColor: Colors.transparent,
-              foregroundColor: Color(0xFF1E293B),
-              iconTheme: IconThemeData(color: Color(0xFF1E293B)),
+              foregroundColor: Color(0xFF000000),
+              iconTheme: IconThemeData(color: Color(0xFF000000)),
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.dark,
@@ -118,13 +121,13 @@ class PrivateAgentApp extends StatelessWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: const BorderSide(
-                  color: Color(0xFFE2E8F0),
+                  color: Color(0xFFE4E4E7),
                   width: 1.2,
-                ), // Slate-200
+                ),
               ),
             ),
             snackBarTheme: SnackBarThemeData(
-              backgroundColor: const Color(0xFF1E1E1E),
+              backgroundColor: const Color(0xFF18181B),
               contentTextStyle: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
@@ -134,7 +137,7 @@ class PrivateAgentApp extends StatelessWidget {
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Color(0xFF333333), width: 1),
+                side: const BorderSide(color: Color(0xFF27272A), width: 1),
               ),
             ),
           ),

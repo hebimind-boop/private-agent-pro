@@ -63,7 +63,7 @@ class _OverlayAppState extends State<OverlayApp> {
       ChatMessage(
         role: 'assistant',
         content:
-            'Hi! I am your Private Agent. Ask me anything or tell me to perform any task on your device.',
+            'Hi! I am your BoopAgent. Ask me anything or tell me to perform any task on your device.',
       ),
     );
   }
@@ -624,7 +624,7 @@ class _OverlayAppState extends State<OverlayApp> {
                       ),
                       const SizedBox(width: 8),
                       const Text(
-                        'Private Agent',
+                        'BoopAgent',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -656,7 +656,7 @@ class _OverlayAppState extends State<OverlayApp> {
                     children: [
                       Semantics(
                         button: true,
-                        label: 'Open PrivateAgent',
+                        label: 'Open BoopAgent',
                         child: GestureDetector(
                           onTap: () => unawaited(_openMainApp()),
                           child: const Padding(

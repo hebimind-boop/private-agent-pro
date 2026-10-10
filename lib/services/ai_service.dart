@@ -53,14 +53,14 @@ class AiService {
   String _model = _defaultModel;
   int _maxSteps = 15;
   bool _disableMaxSteps = false;
-  double _temperature = 1.0;
-  int _maxTokens = 1024;
+  double _temperature = 0.7;
+  int _maxTokens = 4096;
   bool _useScreenCompression = true;
   bool _useSystemPrompt = true;
   final List<Map<String, String>> _conversationHistory = [];
 
   static const String _systemPrompt = '''
-You are PrivateAgent, a helpful AI assistant that controls an Android phone. You can perform device actions and also have normal conversations.
+You are BoopAgent, a helpful AI assistant that controls an Android phone. You can perform device actions and also have normal conversations.
 
 When the user wants to perform a device action, you MUST respond with ONLY a JSON object (no markdown, no code fences, no extra text) in this exact format:
 {"action": "action_name", "params": {"key": "value"}, "response": "What you say to the user"}
@@ -100,7 +100,7 @@ For normal conversation (questions, chat, info requests), just respond with plai
 ''';
 
   static const String _chatSystemPrompt = '''
-You are PrivateAgent, a helpful conversational AI assistant. 
+You are BoopAgent, a helpful conversational AI assistant. 
 Provide direct, natural, and friendly text responses. You cannot perform device actions or run tools. 
 Answer questions, explain concepts, brainstorm, write emails/messages, and chat with the user in plain text or markdown format.
 ''';
@@ -112,8 +112,8 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
     _model = prefs.getString('api_model') ?? _defaultModel;
     _maxSteps = prefs.getInt('api_max_steps') ?? 15;
     _disableMaxSteps = prefs.getBool('api_disable_max_steps') ?? false;
-    _temperature = prefs.getDouble('api_temperature') ?? 1.0;
-    _maxTokens = prefs.getInt('api_max_tokens') ?? 1024;
+    _temperature = prefs.getDouble('api_temperature') ?? 0.7;
+    _maxTokens = prefs.getInt('api_max_tokens') ?? 4096;
     _useScreenCompression = prefs.getBool('api_use_screen_compression') ?? true;
     _useSystemPrompt = prefs.getBool('api_use_system_prompt') ?? true;
   }
@@ -328,7 +328,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $_apiKey',
               'HTTP-Referer': 'https://github.com/orailnoor/private-agent',
-              'X-Title': 'PrivateAgent',
+              'X-Title': 'BoopAgent',
             },
             body: requestBody,
           )
@@ -452,7 +452,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $_apiKey',
         'HTTP-Referer': 'https://github.com/orailnoor/private-agent',
-        'X-Title': 'PrivateAgent',
+        'X-Title': 'BoopAgent',
       });
 
       request.body = jsonEncode({
@@ -595,7 +595,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer $_apiKey',
                 'HTTP-Referer': 'https://github.com/orailnoor/private-agent',
-                'X-Title': 'PrivateAgent',
+                'X-Title': 'BoopAgent',
               },
               body: jsonEncode({
                 'model': _model,
@@ -654,7 +654,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
         int delaySeconds = 3 * currentTry;
         developer.log(
           'API call failed ($e), retrying $currentTry/$maxRetries in $delaySeconds seconds...',
-          name: 'PrivateAgent',
+          name: 'BoopAgent',
         );
         await Future.delayed(Duration(seconds: delaySeconds));
       }

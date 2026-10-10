@@ -294,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           appLauncher: AppLauncherService(),
           shizukuService: _actionHandler.shizuku,
           onProgress: (msg) {
-            developer.log('Task progress: $msg', name: 'PrivateAgent');
+            developer.log('Task progress: $msg', name: 'BoopAgent');
             _sendOverlayEvent('OVERLAY_PROGRESS', msg);
             if (mounted) {
               setState(() {
@@ -356,14 +356,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!FeatureFlags.floatingOverlayEnabled) return;
     if (!await FlutterOverlayWindow.isPermissionGranted()) return;
 
-    // Never cover PrivateAgent itself. The lifecycle observer will create the
+    // Never cover BoopAgent itself. The lifecycle observer will create the
     // overlay after an automated action moves this app to the background.
     if (_appLifecycleState != AppLifecycleState.paused) return;
 
     if (!await FlutterOverlayWindow.isActive()) {
       await FlutterOverlayWindow.showOverlay(
         enableDrag: true,
-        overlayTitle: 'PrivateAgent',
+        overlayTitle: 'BoopAgent',
         overlayContent: 'Performing task...',
         flag: OverlayFlag.focusPointer,
         alignment: OverlayAlignment.centerRight,
@@ -621,7 +621,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (await FlutterOverlayWindow.isActive()) return;
       await FlutterOverlayWindow.showOverlay(
         enableDrag: true,
-        overlayTitle: "PrivateAgent",
+        overlayTitle: "BoopAgent",
         overlayContent: _isLoading
             ? "Performing task..."
             : "Floating Assistant",
@@ -680,7 +680,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             children: [
               TextSpan(
-                text: 'Private',
+                text: 'Boop',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   color: isDark ? Colors.white : const Color(0xFF000000),
@@ -712,31 +712,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.restart_alt_rounded),
-            tooltip: 'Reset Session',
+            icon: const Icon(Icons.edit_note_rounded, size: 26),
+            tooltip: 'New Chat',
             color: isDark ? Colors.white : Colors.black,
             onPressed: _isLoading ? null : _startNewChat,
-          ),
-          // Settings Action
-          IconButton(
-            icon: const Icon(Icons.settings_rounded),
-            tooltip: 'Settings',
-            color: isDark ? Colors.white : Colors.black,
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SettingsScreen(
-                    aiService: _aiService,
-                    shizukuService: _actionHandler.shizuku,
-                    screenAutomationService: _actionHandler.screenAutomation,
-                    telegramService: _telegramService,
-                  ),
-                ),
-              );
-              await _actionHandler.shizuku.checkAvailability();
-              if (mounted) setState(() {});
-            },
           ),
         ],
       ),
@@ -888,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   size: 26,
                 ),
                 const SizedBox(width: 12),
-                Text('PrivateAgent', style: headerStyle),
+                Text('BoopAgent', style: headerStyle),
               ],
             ),
           ),

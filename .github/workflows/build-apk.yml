@@ -62,27 +62,29 @@ jobs:
 
       - name: Prepare Release APK Asset
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/PrivateAgent-v1.0.12-pro.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/BoopAgent-v1.0.13-pro.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/PrivateAgent-v1.0.12-pro.apk
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.12' }}
-          name: "PrivateAgent Pro v1.0.12 - Unified Zero-Toggle AI Interface & Single-Stream Intent Routing"
+            build/app/outputs/flutter-apk/BoopAgent-v1.0.13-pro.apk
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.13' }}
+          name: "BoopAgent Pro v1.0.13 - Sleek Terminal Onboarding, Rebrand & Strict B&W Monochrome"
           body: |
-            ### PrivateAgent Pro v1.0.12
-            - **Unified AI Interface (Zero-Toggle)**: Completely eliminated manual `[Chat | Agent]` mode toggle pills from both the main app (`HomeScreen`) and Floating Bubble (`OverlayApp`).
-            - **Transparent Single-Stream Intent Routing**: All user inputs go through automatic intent classification via `AgentOrchestrator`:
-              - Conversational / informational prompts (greetings, general Q&A, coding, brainstorming) stream directly from the LLM without touching device accessibility or opening apps.
-              - Device action prompts (e.g., "open youtube", "set volume to 80%", "read screen", "send message") route directly to `TaskExecutor` with clean inline execution badges (`[EXECUTING TASK]`) and native system controls.
-            - **Universal Input Dock**: Seamless "Type a prompt or task..." universal placeholder across both main and overlay interfaces.
-            - **Clean Minimal OLED Monochrome UI**: Top app bar streamlined to Title, Session Reset, and Settings icon in pure high-contrast OLED monochrome styling.
+            ### BoopAgent Pro v1.0.13
+            - **Complete Brand Evolution**: Rebranded from PrivateAgent to **BoopAgent Pro** across the system manifest, application headers, drawer, system channels, and notifications.
+            - **Streamlined TopBar Action**: Replaced the top settings gear with a crisp "New Chat" icon button for immediate fresh session creation; Settings accessible via the sidebar drawer.
+            - **Settings Decluttering**: Purged the "Tuning & Boundaries" section to keep the UI clean while enforcing optimal production-grade defaults (temperature 0.7, max steps 15, context limit 4096).
+            - **Radical Terminal Setup Onboarding**: Rebuilt onboarding as a sleek 3-step cybernetic terminal setup:
+              - Monolithic branding with typing subtitle.
+              - Interactive permission grid with real-time status badges.
+              - Monochrome neural engine selector (NVIDIA, DeepSeek, Groq, Ollama) with monospace API key input.
+            - **Strict B&W Light & Dark Themes**: Completely eradicated purple/blue accents across all buttons and controls in favor of pure high-contrast monochrome design.
 
             #### Direct Download
-            Download **PrivateAgent-v1.0.12-pro.apk** below to install or update.
+            Download **BoopAgent-v1.0.13-pro.apk** below to install or update.
           draft: false
           prerelease: false
           make_latest: true

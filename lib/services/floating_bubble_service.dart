@@ -63,7 +63,7 @@ class FloatingBubbleService {
       if (!await FlutterOverlayWindow.isActive()) {
         await FlutterOverlayWindow.showOverlay(
           enableDrag: true,
-          overlayTitle: 'PrivateAgent',
+          overlayTitle: 'BoopAgent',
           overlayContent: 'Floating Assistant',
           flag: OverlayFlag.focusPointer,
           alignment: OverlayAlignment.centerRight,

@@ -39,10 +39,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   late TextEditingController _telegramTokenController;
   bool _obscureKey = true;
   bool _telegramEnabled = false;
-  double _maxSteps = 15;
-  bool _disableMaxSteps = false;
-  late TextEditingController _maxTokensController;
-  double _temperature = 1.0;
   bool _useScreenCompression = true;
   bool _useSystemPrompt = true;
   bool _floatingIconEnabled = false;
@@ -61,12 +57,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       text: widget.telegramService.botToken,
     );
     _telegramEnabled = widget.telegramService.isEnabled;
-    _maxSteps = widget.aiService.rawMaxSteps.toDouble();
-    _disableMaxSteps = widget.aiService.disableMaxSteps;
-    _temperature = widget.aiService.temperature;
-    _maxTokensController = TextEditingController(
-      text: widget.aiService.maxTokens.toString(),
-    );
     _useScreenCompression = widget.aiService.useScreenCompression;
     _useSystemPrompt = widget.aiService.useSystemPrompt;
 
@@ -75,7 +65,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     _baseUrlController.addListener(_autoSave);
     _modelController.addListener(_autoSave);
     _telegramTokenController.addListener(_autoSave);
-    _maxTokensController.addListener(_autoSave);
 
     _checkPermissions();
     if (FeatureFlags.floatingOverlayEnabled) {
@@ -101,12 +90,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     _baseUrlController.removeListener(_autoSave);
     _modelController.removeListener(_autoSave);
     _telegramTokenController.removeListener(_autoSave);
-    _maxTokensController.removeListener(_autoSave);
     _apiKeyController.dispose();
     _baseUrlController.dispose();
     _modelController.dispose();
     _telegramTokenController.dispose();
-    _maxTokensController.dispose();
     super.dispose();
   }
 
@@ -159,11 +146,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       isEnabled: _telegramEnabled,
     );
 
-    widget.aiService.saveMaxSteps(_maxSteps.toInt());
-    widget.aiService.saveDisableMaxSteps(_disableMaxSteps);
+    widget.aiService.saveMaxSteps(15);
+    widget.aiService.saveDisableMaxSteps(false);
     widget.aiService.saveAdvancedSettings(
-      temperature: _temperature,
-      maxTokens: int.tryParse(_maxTokensController.text) ?? 1024,
+      temperature: 0.7,
+      maxTokens: 4096,
       useScreenCompression: _useScreenCompression,
       useSystemPrompt: _useSystemPrompt,
     );
@@ -386,19 +373,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                     child: SegmentedButton<ThemeMode>(
                       style: SegmentedButton.styleFrom(
                         selectedBackgroundColor: isDark
-                            ? Colors.white
-                            : Theme.of(context).colorScheme.primary,
+                            ? const Color(0xFFFFFFFF)
+                            : const Color(0xFF000000),
                         selectedForegroundColor: isDark
-                            ? Colors.black
-                            : Colors.white,
+                            ? const Color(0xFF000000)
+                            : const Color(0xFFFFFFFF),
                         backgroundColor: isDark
                             ? const Color(0xFF1C1C1E)
-                            : Colors.white,
-                        foregroundColor: isDark ? const Color(0xFF8E8E93) : Colors.black87,
+                            : const Color(0xFFFFFFFF),
+                        foregroundColor: isDark
+                            ? const Color(0xFF8E8E93)
+                            : const Color(0xFF18181B),
                         side: BorderSide(
                           color: isDark
                               ? const Color(0xFF2C2C2E)
-                              : const Color(0xFFE2E8F0),
+                              : const Color(0xFFE4E4E7),
                         ),
                       ),
                       segments: [
@@ -573,8 +562,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isDark
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.primary,
+                          ? const Color(0xFFFFFFFF)
+                          : const Color(0xFF000000),
+                      foregroundColor: isDark
+                          ? const Color(0xFF000000)
+                          : const Color(0xFFFFFFFF),
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
@@ -590,90 +582,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
 
-          // 3. Parameters & Tuning Card
-          _buildSettingsCard(
-            icon: Icons.tune_outlined,
-            title: 'Tuning & Boundaries',
-            subtitle: 'Configure LLM agent parameters',
-            isDark: isDark,
-            children: [
-              SwitchListTile(
-                title: const Text('Disable Maximum Steps'),
-                subtitle: const Text(
-                  '⚠️ Can cause infinite loops.',
-                  style: TextStyle(color: Colors.orange, fontSize: 12),
-                ),
-                value: _disableMaxSteps,
-                onChanged: (bool value) {
-                  setState(() {
-                    _disableMaxSteps = value;
-                  });
-                  _autoSave();
-                },
-                contentPadding: EdgeInsets.zero,
-              ),
-              if (!_disableMaxSteps) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Maximum Steps Per Task: ${_maxSteps.toInt()}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                ),
-                Slider(
-                  value: _maxSteps,
-                  min: 5,
-                  max: 50,
-                  divisions: 45,
-                  label: _maxSteps.toInt().toString(),
-                  onChanged: (value) {
-                    setState(() {
-                      _maxSteps = value;
-                    });
-                  },
-                  onChangeEnd: (value) {
-                    _autoSave();
-                  },
-                ),
-              ],
-              const SizedBox(height: 12),
-              TextField(
-                controller: _maxTokensController,
-                keyboardType: TextInputType.number,
-                decoration: _buildInputDecoration(
-                  labelText: 'Context Limit (Max Tokens)',
-                  hintText: '1024',
-                  prefixIcon: const Icon(Icons.token_rounded, size: 18),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Temperature: ${_temperature.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 13,
-                ),
-              ),
-              Slider(
-                value: _temperature,
-                min: 0.0,
-                max: 2.0,
-                divisions: 20,
-                label: _temperature.toStringAsFixed(2),
-                onChanged: (value) {
-                  setState(() {
-                    _temperature = value;
-                  });
-                },
-                onChangeEnd: (value) {
-                  _autoSave();
-                },
-              ),
-            ],
-          ),
-
-          // 4. Behavior & Extensions Card
+          // Behavior & Extensions Card
           _buildSettingsCard(
             icon: Icons.extension_outlined,
             title: 'Behavior & Extensions',
@@ -903,16 +812,16 @@ class _SettingsScreenState extends State<SettingsScreen>
             },
           ),
 
-          // 10. About / Links Card
+          // About / Links Card
           _buildSettingsCard(
             icon: Icons.info_outline_rounded,
-            title: 'About PrivateAgent',
+            title: 'About BoopAgent',
             subtitle: 'Resources and repository access',
             isDark: isDark,
             children: [
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('PrivateAgent Pro'),
+                title: const Text('BoopAgent Pro'),
                 subtitle: FutureBuilder<String>(
                   future: UpdateService.getInstalledVersion(),
                   initialData: UpdateService.currentVersion,
@@ -1132,7 +1041,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 const SizedBox(height: 12),
                 if (!isRunning) ...[
                   const Text(
-                    'Tap below to open Accessibility Settings, then find "PrivateAgent Screen Control" and enable it.',
+                    'Tap below to open Accessibility Settings, then find "BoopAgent Screen Control" and enable it.',
                     style: TextStyle(fontSize: 13),
                   ),
                   const SizedBox(height: 12),

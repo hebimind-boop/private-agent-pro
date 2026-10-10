@@ -93,7 +93,7 @@ class FloatingOverlayService : Service(), View.OnTouchListener {
                     "Floating Assistant Bubble",
                     NotificationManager.IMPORTANCE_LOW
                 ).apply {
-                    description = "Keeps PrivateAgent floating assistant active"
+                    description = "Keeps BoopAgent floating assistant active"
                     setShowBadge(false)
                 }
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -111,7 +111,7 @@ class FloatingOverlayService : Service(), View.OnTouchListener {
             } else null
 
             val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("PrivateAgent Active")
+                .setContentTitle("BoopAgent Active")
                 .setContentText("Floating Assistant Bubble is running")
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .setContentIntent(pendingIntent)

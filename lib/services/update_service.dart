@@ -27,7 +27,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.12';
+  static const String currentVersion = '1.0.13';
   static const String repoOwner = 'hebimind-boop';
   static const String repoName = 'private-agent-pro';
   static const String latestReleaseUrl =
@@ -89,7 +89,7 @@ class UpdateService {
         Uri.parse(latestReleaseUrl),
         headers: {
           'Accept': 'application/vnd.github+json',
-          'User-Agent': 'PrivateAgent-App',
+          'User-Agent': 'BoopAgent-App',
         },
       ).timeout(const Duration(seconds: 15));
 
@@ -105,16 +105,18 @@ class UpdateService {
       final publishedAt = DateTime.tryParse(publishedAtStr) ?? DateTime.now();
 
       // Find exact release APK asset:
-      // Prioritize PrivateAgent-*pro*.apk or PrivateAgent-*.apk
+      // Prioritize BoopAgent-*pro*.apk, PrivateAgent-*pro*.apk, or matching release APKs
       // and explicitly ignore split architecture APKs (arm64-v8a, armeabi-v7a, x86_64).
       String downloadUrl = '';
       int apkSize = 0;
       final assets = data['assets'] as List<dynamic>? ?? [];
 
-      // Pass 1: exact PrivateAgent-*pro*.apk match
+      // Pass 1: exact BoopAgent-*pro*.apk or PrivateAgent-*pro*.apk match
       for (final asset in assets) {
         final name = (asset['name'] as String? ?? '').toLowerCase();
-        if (name.endsWith('.apk') && name.contains('privateagent') && name.contains('pro')) {
+        if (name.endsWith('.apk') &&
+            (name.contains('boopagent') || name.contains('privateagent')) &&
+            name.contains('pro')) {
           downloadUrl = asset['browser_download_url'] as String? ?? '';
           apkSize = asset['size'] as int? ?? 0;
           debugPrint('Selected Pass 1 Pro APK: ${asset['name']} ($apkSize bytes)');
@@ -122,14 +124,15 @@ class UpdateService {
         }
       }
 
-      // Pass 2: any asset named PrivateAgent-*.apk
+      // Pass 2: any asset named BoopAgent-*.apk or PrivateAgent-*.apk
       if (downloadUrl.isEmpty) {
         for (final asset in assets) {
           final name = (asset['name'] as String? ?? '').toLowerCase();
-          if (name.endsWith('.apk') && name.startsWith('privateagent')) {
+          if (name.endsWith('.apk') &&
+              (name.startsWith('boopagent') || name.startsWith('privateagent'))) {
             downloadUrl = asset['browser_download_url'] as String? ?? '';
             apkSize = asset['size'] as int? ?? 0;
-            debugPrint('Selected Pass 2 PrivateAgent APK: ${asset['name']} ($apkSize bytes)');
+            debugPrint('Selected Pass 2 BoopAgent APK: ${asset['name']} ($apkSize bytes)');
             break;
           }
         }
@@ -154,7 +157,7 @@ class UpdateService {
       // Fallback direct URL if asset not found in metadata
       if (downloadUrl.isEmpty && tagName.isNotEmpty) {
         downloadUrl =
-            'https://github.com/$repoOwner/$repoName/releases/download/$tagName/PrivateAgent-$tagName-pro.apk';
+            'https://github.com/$repoOwner/$repoName/releases/download/$tagName/BoopAgent-$tagName-pro.apk';
       }
 
       if (downloadUrl.isEmpty) {
